@@ -1,0 +1,20 @@
+{
+  "name": "practico-2",
+  "version": "1.0.0",
+  "description": "Este proyecto es un backend básico con Node.js y Express, preparado para conectarse a una base de datos MySQL en WAMP. El frontend ya está listo y este backend servirá como API para manejar la lógica de negocio y la conexión con la base de datos.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "mysql2": "^3.15.1"
+  }
+}

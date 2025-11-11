@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Autenticación</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <h2>Sistema de Ventas</h2>
+            </div>
+            <div class="nav-menu">
+                <button class="nav-btn" id="loginBtn">Iniciar Sesion</button>
+                <button class="nav-btn" id="registerBtn">Registrarse</button>
+                <!-- Menu dinámico para usuarios autenticados -->
+                <div id="mainMenu" style="display:none; margin-left:16px;">
+                    <div class="menu-item">
+                        <button class="nav-btn" id="ventasMenuBtn">Ventas ▾</button>
+                        <div id="ventasSubmenu" style="display:none; position:absolute; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
+                            <a href="#" id="newSaleLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Nueva venta</a>
+                            <a href="#" id="salesHistoryLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial</a>
+                        </div>
+                    </div>
+                    <div class="menu-item" style="position:relative;">
+                        <button class="nav-btn" id="stockMenuBtn">Stock ▾</button>
+                        <div id="stockSubmenu" style="display:none; position:absolute; left:0; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
+                            <a href="#" id="productsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Productos</a>
+                            <a href="#" id="addProductLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Ingresar producto</a>
+                            <a href="#" id="stockReportsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Reportes</a>
+                        </div>
+                    </div>
+                    <div class="menu-item" style="position:relative;">
+                        <button class="nav-btn" id="cajaMenuBtn">Caja ▾</button>
+                        <div id="cajaSubmenu" style="display:none; position:absolute; left:0; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
+                            <a href="#" id="cajaOpenLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Apertura</a>
+                            <a href="#" id="cajaCloseLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Cierre</a>
+                            <a href="#" id="cajaMovementsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Movimientos</a>
+                        </div>
+                    </div>
+                </div>
+                <button class="nav-btn" id="logoutBtn" style="display: none;">Cerrar Sesión</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Welcome Section -->
+        <section class="welcome-section" id="welcomeSection">
+            <div class="welcome-container">
+                <h1>Bienvenido</h1>
+                <p>Por favor inicia sesión o regístrate para continuar</p>
+            </div>
+        </section>
+
+        <!-- Login Form -->
+        <section class="auth-section" id="loginSection">
+            <div class="auth-container">
+                <div class="auth-card">
+                    <h2>Inicia Sesion</h2>
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="loginEmail">Correo Electronico</label>
+                            <input type="email" id="loginEmail" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Contraseña</label>
+                            <input type="password" id="loginPassword" name="password" required>
+                        </div>
+                        <button type="submit" class="auth-btn">Iniciar Sesion</button>
+                    </form>
+                    <p class="auth-switch">
+                        No tienes una cuenta?
+                        <a href="#" id="showRegister">Regístrate aquí</a>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Register Form -->
+        <section class="auth-section" id="registerSection" style="display: none;">
+            <div class="auth-container">
+                <div class="auth-card">
+                    <h2>Registro</h2>
+                    <form id="registerForm">
+                        <div class="form-group">
+                            <label for="registerName">Usuario</label>
+                            <input type="text" id="registerName" name="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerEmail">Correo Electronico</label>
+                            <input type="email" id="registerEmail" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerPassword">Contraseña</label>
+                            <input type="password" id="registerPassword" name="password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword">Confirmar Contraseña</label>
+                            <input type="password" id="confirmPassword" name="confirmPassword" required>
+                        </div>
+                        <button type="submit" class="auth-btn">Registrar</button>
+                    </form>
+                    <p class="auth-switch">
+                        Ya tienes una cuenta? 
+                        <a href="#" id="showLogin">Inicia sesión aquí</a>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard (shown after login) -->
+        <section class="dashboard-section" id="dashboardSection" style="display: none;">
+            <div class="dashboard-container">
+                <h1>Bienvenidos</h1>
+                <p id="userWelcome"></p>
+                <div class="dashboard-content">
+                    <div class="dashboard-card" style="cursor:pointer" onclick="showCajaPanel('apertura');">
+                        <h3>Abrir Caja</h3>
+                        <p>Realiza la apertura de una nueva caja para ventas.</p>
+                    </div>
+                    <div class="dashboard-card" style="cursor:pointer" onclick="showSection(refs.newSaleSection); ensureProductSearch(); ensureProductsLoaded();">
+                        <h3>Realizar Ventas</h3>
+                        <p>Realiza ventas de productos a clientes.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ventas: Nueva venta -->
+        <section class="dashboard-section" id="newSaleSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Nueva Venta</h1>
+                <div class="dashboard-card">
+                    <form id="newSaleForm">
+                        <div class="sale-products-table" style="margin-bottom: 0;">
+                            <div class="sale-products-header" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;padding:8px 12px;background:#f1f5f9;font-weight:600;color:#475569;border-radius:8px 8px 0 0;">
+                                <span>Producto</span>
+                                <span>Cantidad</span>
+                                <span>Precio</span>
+                                <span>Subtotal</span>
+                                <span></span>
+                            </div>
+                            <div id="saleProductsContainer">
+                                <!-- Dinamically populated product selectors -->
+                            </div>
+                        </div>
+                        <div class="sale-total-final" style="display:flex;justify-content:flex-end;align-items:center;margin:18px 0 0 0;gap:18px;">
+                            <span style="font-size:1.2rem;font-weight:600;color:#64748b;">Total:</span>
+                            <span id="saleTotalValue" style="font-size:1.5rem;font-weight:700;color:#0f172a;">$0.00</span>
+                        </div>
+                        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                            <button type="submit" class="auth-btn" style="min-width:180px;">Registrar Venta</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ventas: Historial -->
+        <section class="dashboard-section" id="salesHistorySection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Historial de Ventas</h1>
+                <div class="dashboard-card">
+                    <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+                        <div class="form-group" style="margin: 0; flex-grow: 1; max-width: 200px;">
+                            <label for="salesDate">Fecha</label>
+                            <input type="date" id="salesDate" name="salesDate" class="date-input" style="width: 100%;">
+                        </div>
+                        <button id="searchSalesBtn" class="auth-btn" style="margin-top: 22px;">Buscar</button>
+                    </div>
+                    <div id="noSalesMessage" style="display: none; text-align: center; padding: 20px; color: #64748b; font-size: 1.1rem; background: #f8fafc; border-radius: 8px; margin-bottom: 20px;">
+                        No hay ventas registradas para la fecha seleccionada
+                    </div>
+                    <table id="salesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Vendedor</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stock: Productos list -->
+        <section class="dashboard-section" id="productsSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Productos</h1>
+                <div class="dashboard-card">
+                    <table id="productsTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Descripcion</th><th>Precio</th><th>Stock</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stock: Ingresar producto -->
+        <section class="dashboard-section" id="addProductSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1 style="text-align: center;">Ingresar Producto</h1>
+                <div class="dashboard-card" style="max-width:600px;margin:0 auto;background:linear-gradient(120deg,#fef9c3 0%,#fef3c7 100%);box-shadow:0 4px 18px rgba(251,191,36,0.10);border:2px solid #fde68a;">
+                    <form id="addProductForm">
+                        <div class="form-group"><label>Nombre</label><input name="nombre" required></div>
+                        <div class="form-group"><label>Descripcion</label><input name="descripcion"></div>
+                        <div class="form-group"><label>Precio</label><input name="precio" type="number" step="0.01" required></div>
+                        <div class="form-group"><label>Stock</label><input name="stock" type="number" required></div>
+                        <button type="submit" class="auth-btn">Agregar</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stock: Reportes -->
+        <section class="dashboard-section" id="stockReportsSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1 style="text-align: center;">Reportes de Stock</h1>
+                <div class="dashboard-card" style="max-width:600px;margin:0 auto;background:linear-gradient(120deg,#fef9c3 0%,#fef3c7 100%);box-shadow:0 4px 18px rgba(251,191,36,0.10);border:2px solid #fde68a;">
+                    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+                        <span style="font-size:2.2rem;line-height:1;">&#9888;&#65039;</span>
+                        <span style="font-size:1.25rem;font-weight:600;color:#b45309;">Productos con bajo stock</span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table id="lowStockReport" style="width:100%;border-collapse:collapse;background:transparent;">
+                            <thead>
+                                <tr style="background:#fde68a;color:#b45309;">
+                                    <th style="padding:10px 8px;text-align:left; color:#000000;">Producto</th>
+                                    <th style="padding:10px 8px;text-align:left; color:#000000;">Descripción</th>
+                                    <th style="padding:10px 8px;text-align:right; color:#000000;">Precio</th>
+                                    <th style="padding:10px 8px;text-align:right; color:#000000;">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Se llena dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Caja: Apertura/Cierre/Movimientos -->
+        <section class="dashboard-section" id="cajaSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1 style="text-align: center;">Caja</h1>
+                <div class="dashboard-card-2">
+                   
+                    <!-- Apertura panel -->
+                    <div id="cajaAperturaPanel" class="caja-panel">
+                        <h3>Apertura</h3>
+                        <form id="openCajaForm">
+                            <div class="form-group"><label>Fecha</label><input id="openFecha" name="fecha" type="date" required></div>
+                            <div class="form-group"><label>Saldo previo</label><input id="openSaldoPrevio" name="saldo_previo" type="text" readonly></div>
+                            <div class="form-group"><label>Apertura</label><input id="openApertura" name="apertura" type="number" step="0.01" value="0" min="0" required placeholder="Monto inicial de caja"></div>
+                            <button class="auth-btn" type="submit">Abrir Caja</button>
+                        </form>
+                    </div>
+
+                    <!-- Cierre panel -->
+                    <div id="cajaCierrePanel" class="caja-panel" style="display:none;">
+                        <h3>Cierre</h3>
+                        <form id="closeCajaForm">
+                            <div class="form-group"><label>Caja actual</label><input id="closeCajaDisplay" type="text" readonly></div>
+                            <input type="hidden" id="closeCajaId" name="caja_id">
+                            <div class="form-group"><label>Cierre</label><input id="closeCierre" name="cierre" type="number" step="0.01" value="0" min="0" required></div>
+                            <button class="auth-btn" type="submit">Cerrar Caja</button>
+                        </form>
+                    </div>
+
+                    <!-- Movimientos panel -->
+                    <div id="cajaMovimientosPanel" class="caja-panel" style="display:none;">
+                        <h3>Resumen de Caja</h3>
+                        <div class="caja-summary-grid">
+                            <div class="summary-box">
+                                <span class="summary-label">Apertura</span>
+                                <span class="summary-value" id="summaryApertura">$0.00</span>
+                            </div>
+                            <div class="summary-box">
+                                <span class="summary-label">Entradas</span>
+                                <span class="summary-value" id="summaryEntradas">$0.00</span>
+                            </div>
+                            <div class="summary-box">
+                                <span class="summary-label">Salidas</span>
+                                <span class="summary-value" id="summarySalidas">$0.00</span>
+                            </div>
+                            <div class="summary-box">
+                                <span class="summary-label">Neto</span>
+                                <span class="summary-value" id="summaryNeto">$0.00</span>
+                            </div>
+                            <div class="summary-box">
+                                <span class="summary-label">Esperado al cierre</span>
+                                <span class="summary-value" id="summaryEsperado">$0.00</span>
+                            </div>
+                            <div class="summary-box">
+                                <span class="summary-label">Cierre registrado</span>
+                                <span class="summary-value" id="summaryCierre">No cerrado</span>
+                            </div>
+                        </div>
+
+                        <h3 style="margin-top: 24px;">Movimientos</h3>
+                        <div class="movements-table">
+                            <div id="movementsList" class="movements-list"></div>
+                        </div>
+
+                        <form id="movimientoForm" style="margin-top:32px;">
+                            <div class="form-group"><label>Caja actual</label><input id="movimientoCajaDisplay" type="text" readonly></div>
+                            <input type="hidden" id="movimientoCajaId" name="caja_id">
+                            <div class="form-group"><label>Descripcion</label><input name="descripcion"></div>
+                            <div class="form-group"><label>Monto</label><input name="monto" type="number" step="0.01" required></div>
+                            <div class="form-group"><label>Tipo</label><select name="tipo"><option value="salida">Salida</option><option value="entrada">Entrada</option></select></div>
+                            <button class="auth-btn" type="submit">Registrar Movimiento</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Message Display -->
+    <div class="message" id="message"></div>
+
+    <!-- Edit Product Modal -->
+    <div id="editProductModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>Editar Producto</h3>
+            <form id="editProductForm">
+                <input type="hidden" name="id" id="editProductId">
+                <div class="form-group"><label>Nombre</label><input name="nombre" id="editNombre" required></div>
+                <div class="form-group"><label>Descripcion</label><input name="descripcion" id="editDescripcion"></div>
+                <div class="form-group"><label>Precio</label><input name="precio" id="editPrecio" type="number" step="0.01" required></div>
+                <div class="form-group"><label>Stock</label><input name="stock" id="editStock" type="number" required></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Guardar</button>
+                    <button type="button" id="cancelEditBtn" class="auth-btn" style="background:#ef4444;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
