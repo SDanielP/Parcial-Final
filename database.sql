@@ -4,12 +4,13 @@ CREATE DATABASE negocio_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE negocio_db;
 
 -- Tabla de usuarios
+-- Añadimos los estados 'pendiente' y 'moderador'. El valor por defecto al registrarse será 'pendiente'.
 CREATE TABLE usuarios (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(50) NOT NULL,
   usuario VARCHAR(30) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
-  rol ENUM('admin','vendedor','cajero') DEFAULT 'vendedor'
+  rol ENUM('admin','moderador','vendedor','cajero','pendiente') DEFAULT 'pendiente'
 );
 
 -- Tabla de productos

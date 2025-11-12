@@ -24,6 +24,11 @@ const refs = {
   messageDiv: document.getElementById('message'),
   userWelcome: document.getElementById('userWelcome'),
   mainMenu: document.getElementById('mainMenu'),
+  adminMenu: document.getElementById('adminMenu'),
+  adminUsersBtn: document.getElementById('adminUsersBtn'),
+  adminSubmenu: document.getElementById('adminSubmenu'),
+  manageUsersLink: document.getElementById('manageUsersLink'),
+  usersTable: document.getElementById('usersTable'),
   newSaleSection: document.getElementById('newSaleSection'),
   salesHistorySection: document.getElementById('salesHistorySection'),
   productsSection: document.getElementById('productsSection'),
@@ -132,6 +137,16 @@ function attachListeners(){
     }
   })
 
+  // Admin menu toggle
+  refs.adminUsersBtn?.addEventListener('click', (e)=>{
+    e.stopPropagation()
+    const isVisible = refs.adminSubmenu?.style.display === 'flex'
+    closeAllSubmenus()
+    if (!isVisible && refs.adminSubmenu) refs.adminSubmenu.style.display = 'flex'
+  })
+
+  refs.manageUsersLink?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.usersTable ? document.getElementById('manageUsersSection') : null); loadUsers(); closeAllSubmenus(); })
+
   // Ventas history date search
   document.getElementById('searchSalesBtn')?.addEventListener('click', () => {
     const dateInput = document.getElementById('salesDate')
@@ -143,14 +158,14 @@ function attachListeners(){
   // Close submenus on outside click
   document.addEventListener('click', (e) => {
     // Si el click fue en un enlace del submenú, cerrar después de la navegación
-    if (e.target.closest('#ventasSubmenu a, #stockSubmenu a, #cajaSubmenu a')) {
+    if (e.target.closest('#ventasSubmenu a, #stockSubmenu a, #cajaSubmenu a, #adminSubmenu a')) {
       setTimeout(closeAllSubmenus, 100)
       return
     }
 
     // Si el click no fue en un botón de menú ni dentro de un submenú, cerrar todos
-    const isMenuBtn = e.target.closest('#ventasMenuBtn, #stockMenuBtn, #cajaMenuBtn')
-    const isSubmenu = e.target.closest('#ventasSubmenu, #stockSubmenu, #cajaSubmenu')
+    const isMenuBtn = e.target.closest('#ventasMenuBtn, #stockMenuBtn, #cajaMenuBtn, #adminUsersBtn')
+    const isSubmenu = e.target.closest('#ventasSubmenu, #stockSubmenu, #cajaSubmenu, #adminSubmenu')
     
     if (!isMenuBtn && !isSubmenu) {
       closeAllSubmenus()
@@ -214,11 +229,12 @@ function closeAllSubmenus(){
   if (refs.ventasSubmenu) refs.ventasSubmenu.style.display = 'none'
   if (refs.stockSubmenu) refs.stockSubmenu.style.display = 'none'
   if (refs.cajaSubmenu) refs.cajaSubmenu.style.display = 'none'
+  if (refs.adminSubmenu) refs.adminSubmenu.style.display = 'none'
 }
 
 function hideAllSections(){
   // Hide known sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection']
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','manageUsersSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded() } }
@@ -282,14 +298,99 @@ function updateNav(active){
     refs.loginBtn && (refs.loginBtn.style.display='none')
     refs.registerBtn && (refs.registerBtn.style.display='none')
     refs.logoutBtn && (refs.logoutBtn.style.display='inline-block')
-    refs.mainMenu && (refs.mainMenu.style.display='flex')
+    // Default: hide everything then selectively show per role
+    if (refs.mainMenu) refs.mainMenu.style.display = 'none'
+    if (refs.adminMenu) refs.adminMenu.style.display = 'none'
+
+    // Role-specific visibility
+    if (currentUser.rol === 'admin'){
+      // Admin sees only admin menu
+      if (refs.adminMenu) refs.adminMenu.style.display = 'flex'
+    } else if (currentUser.rol === 'moderador'){
+      // Moderador sees main menu (ventas, stock, caja)
+      if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
+      // ensure stock/ventas/caja buttons visible
+      if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
+      if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'inline-block'
+      if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
+    } else if (currentUser.rol === 'vendedor'){
+      // Vendedor sees only ventas and caja
+      if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
+      if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
+      if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
+      if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'none'
+    } else {
+      // default: show main menu
+      if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
+    }
   } else {
     refs.loginBtn && (refs.loginBtn.style.display='inline-block')
     refs.registerBtn && (refs.registerBtn.style.display='inline-block')
     refs.logoutBtn && (refs.logoutBtn.style.display='none')
     refs.mainMenu && (refs.mainMenu.style.display='none')
+    if (refs.adminMenu) refs.adminMenu.style.display = 'none'
     if (active==='login') refs.loginBtn && refs.loginBtn.classList.add('active')
     if (active==='register') refs.registerBtn && refs.registerBtn.classList.add('active')
+  }
+}
+
+// Admin: load and render users
+async function loadUsers(){
+  if (!currentUser || currentUser.rol !== 'admin') return showMessage('Acceso denegado','error')
+  try{
+    const res = await fetch(`${API_BASE_URL}/usuarios`)
+    if (!res.ok) {
+      let text = ''
+      try { const d = await res.json(); text = d.error || JSON.stringify(d) } catch(e){ text = await res.text().catch(()=>res.statusText) }
+      console.error('Error cargando usuarios', res.status, text)
+      return showMessage(`Error cargando usuarios: ${text}`,'error')
+    }
+    const data = await res.json()
+    console.log('GET /api/usuarios response data:', data)
+    const users = (data && data.usuarios) ? data.usuarios : []
+    try{
+      renderUsersTable(users)
+    }catch(err){
+      console.error('Error rendering users table', err, { users })
+      showMessage('Error mostrando usuarios: ' + (err.message||err),'error')
+    }
+  }catch(err){ console.error(err); showMessage('No se pudieron cargar usuarios: ' + (err.message||err),'error') }
+}
+
+function renderUsersTable(users){
+  if (!refs.usersTable) return
+  if (!Array.isArray(users)) {
+    showMessage('Respuesta inválida al cargar usuarios','error')
+    console.error('renderUsersTable: users is not array', users)
+    return
+  }
+  const tbody = refs.usersTable.querySelector('tbody')
+  tbody.innerHTML = ''
+  console.log('users var', users)
+  for (let i = 0; i < users.length; i++){
+    const u = users[i]
+    const tr = document.createElement('tr')
+    tr.innerHTML = `<td>${u.id}</td><td>${u.nombre}</td><td>${u.usuario}</td><td>${u.rol}</td><td></td>`
+    const tdActions = tr.querySelector('td:last-child')
+  const select = document.createElement('select')
+  select.className = 'role-select'
+    const roles = ['admin','moderador','vendedor','cajero','pendiente']
+    for (let j = 0; j < roles.length; j++){
+      const r = roles[j]
+      const opt = document.createElement('option')
+      opt.value = r; opt.textContent = r; if (u.rol === r) opt.selected = true
+      select.appendChild(opt)
+    }
+    select.addEventListener('change', async ()=>{
+      const newRole = select.value
+      try{
+        const res = await fetch(`${API_BASE_URL}/usuarios/${u.id}/rol`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ rol: newRole }) })
+        if (res.ok){ showMessage('Rol actualizado','success'); tr.children[3].textContent = newRole; if (currentUser && currentUser.id === u.id){ currentUser.rol = newRole; localStorage.setItem('userData', JSON.stringify(currentUser)); updateNav(); } }
+        else { const d = await res.json(); showMessage(d.error || 'Error actualizando rol','error') }
+      }catch(err){ console.error(err); showMessage('Error de red','error') }
+    })
+    tdActions.appendChild(select)
+    tbody.appendChild(tr)
   }
 }
 
@@ -496,12 +597,35 @@ async function handleLogin(e){
     const res = await fetch(`${API_BASE_URL}/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
     if (res.ok){
-      currentUser = data.user
-      localStorage.setItem('userData', JSON.stringify(currentUser))
-      showMessage('Login exitoso','success')
-      showDashboard()
-      loadProducts()
-      loadSales()
+        // normalize role if backend returned empty
+        const role = data.user && data.user.rol ? data.user.rol : 'pendiente'
+        currentUser = Object.assign({}, data.user, { rol: role })
+        localStorage.setItem('userData', JSON.stringify(currentUser))
+        showMessage('Login exitoso','success')
+        // After login, route user according to role
+        if (currentUser.rol === 'admin'){
+          // show only admin users UI
+          showSection(document.getElementById('manageUsersSection'))
+          updateNav()
+          loadUsers()
+        } else if (currentUser.rol === 'vendedor'){
+          // show ventas directly for vendedores
+          updateNav()
+          showSection(refs.newSaleSection)
+          ensureProductSearch(); ensureProductsLoaded();
+        } else if (currentUser.rol === 'moderador'){
+          // moderador sees dashboard (welcome) and can access ventas/stock/caja
+          updateNav()
+          showDashboard()
+          loadProducts()
+          loadSales()
+        } else {
+          // default behavior
+          updateNav()
+          showDashboard()
+          loadProducts()
+          loadSales()
+        }
     } else showMessage(data.error || 'Error en login','error')
   }catch(err){ console.error(err); showMessage('Error de red','error') }
 }
@@ -522,7 +646,16 @@ async function handleRegister(e){
   }catch(err){ console.error(err); showMessage('Error de red','error') }
 }
 
-function logout(){ localStorage.removeItem('userData'); currentUser = null; updateNav(); showWelcome(); showMessage('Sesión cerrada','success') }
+function logout(){
+  localStorage.removeItem('userData')
+  currentUser = null
+  // Close any open submenus and sections to avoid residual UI after logout
+  closeAllSubmenus()
+  hideAllSections()
+  updateNav()
+  showWelcome()
+  showMessage('Sesión cerrada','success')
+}
 
 // Products
 async function loadProducts(){

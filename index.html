@@ -42,6 +42,13 @@
                         </div>
                     </div>
                 </div>
+                <!-- Admin: user management -->
+                <div id="adminMenu" style="display:none; margin-left:12px;">
+                    <button class="nav-btn" id="adminUsersBtn">Usuarios ▾</button>
+                    <div id="adminSubmenu" style="display:none; position:absolute; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
+                        <a href="#" id="manageUsersLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Gestionar usuarios</a>
+                    </div>
+                </div>
                 <button class="nav-btn" id="logoutBtn" style="display: none;">Cerrar Sesión</button>
             </div>
         </div>
@@ -235,6 +242,16 @@
             </div>
         </section>
 
+        <!-- Admin: Users management -->
+        <section class="dashboard-section" id="manageUsersSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Gestionar Usuarios</h1>
+                <div class="dashboard-card">
+                    <table id="usersTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
         <!-- Caja: Apertura/Cierre/Movimientos -->
         <section class="dashboard-section" id="cajaSection" style="display:none;">
             <div class="dashboard-container">
@@ -334,6 +351,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=2"></script>
 </body>
 </html>

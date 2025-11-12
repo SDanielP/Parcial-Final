@@ -18,9 +18,10 @@ router.get('/test', async (req, res) => {
 });
 
 // Ruta para registrar un nuevo usuario (signup)
-// Expected body: { nombre, usuario, password, rol }
+// Expected body: { nombre, usuario, password }
+// New users are created with role 'pendiente' by default and require admin approval to change role.
 router.post('/register', async (req, res) => {
-  const { nombre, usuario, password, rol } = req.body;
+  const { nombre, usuario, password } = req.body;
   if (!usuario || !password || !nombre) {
     return res.status(400).json({ error: 'Faltan datos requeridos' });
   }
@@ -29,8 +30,36 @@ router.post('/register', async (req, res) => {
     if (existing.length > 0) return res.status(409).json({ error: 'El usuario ya existe' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    await query('INSERT INTO usuarios (nombre, usuario, password, rol) VALUES (?, ?, ?, ?)', [nombre, usuario, hashedPassword, rol || 'vendedor']);
-    res.status(201).json({ message: 'Usuario registrado correctamente' });
+    await query('INSERT INTO usuarios (nombre, usuario, password, rol) VALUES (?, ?, ?, ?)', [nombre, usuario, hashedPassword, 'pendiente']);
+    res.status(201).json({ message: 'Usuario registrado correctamente, espere aprobación del administrador' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin endpoints for user management
+// GET /api/usuarios -> list users (admin only)
+router.get('/usuarios', async (req, res) => {
+  try {
+    const users = await query('SELECT id, nombre, usuario, rol FROM usuarios ORDER BY id DESC');
+    // Normalize role for any rows that might have empty/null
+    const safe = users.map(u => ({ id: u.id, nombre: u.nombre, usuario: u.usuario, rol: (u.rol && String(u.rol).length>0) ? u.rol : 'pendiente' }))
+    res.json({ usuarios: safe });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/usuarios/:id/rol -> change user role (admin only)
+// body: { rol }
+router.put('/usuarios/:id/rol', async (req, res) => {
+  const { id } = req.params;
+  const { rol } = req.body;
+  const allowed = ['admin','moderador','vendedor','cajero','pendiente'];
+  if (!allowed.includes(rol)) return res.status(400).json({ error: 'Rol inválido' });
+  try {
+    await query('UPDATE usuarios SET rol = ? WHERE id = ?', [rol, id]);
+    res.json({ message: 'Rol actualizado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -49,7 +78,9 @@ router.post('/login', async (req, res) => {
     if (!match) return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
 
     // Return basic user info (no token for simplicity)
-    res.json({ message: 'Login exitoso', user: { id: user.id, nombre: user.nombre, usuario: user.usuario, rol: user.rol } });
+    // Normalize role in case DB has empty/null values
+    const safeRole = (user.rol && String(user.rol).length>0) ? user.rol : 'pendiente'
+    res.json({ message: 'Login exitoso', user: { id: user.id, nombre: user.nombre, usuario: user.usuario, rol: safeRole } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -95,6 +95,48 @@ body {
   display: inline-block;
 }
 
+/* Admin menu adjustments: ensure submenu anchors to its button and does not overlap logout */
+#adminMenu {
+  display: flex;
+  gap: 10px;
+  margin-left: 12px;
+  align-items: center;
+  position: relative; /* anchor submenu to this container */
+}
+
+#adminSubmenu {
+  /* position under the admin button, align to the right edge so it doesn't overlap the logout button */
+  top: calc(100% + 10px) !important;
+  right: 0 !important;
+  left: auto !important;
+  min-width: 180px;
+  z-index: 1002; /* above other content but below messages */
+}
+
+/* Make the 'Gestionar usuarios' link visually consistent with other submenu items */
+#adminSubmenu a {
+  display: block;
+  padding: 10px 14px;
+  color: #1e293b;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #eef2ff 0%, #eefcff 100%);
+  border: 2px solid rgba(99,102,241,0.08);
+}
+
+#adminSubmenu a::before { content: "👥 "; font-size: 1.1rem; margin-right:6px }
+
+#adminSubmenu a:hover {
+  transform: translateX(4px);
+  background: linear-gradient(135deg, #e9d5ff 0%, #ede9fe 100%);
+}
+
+/* Ensure logout button stays above floating submenus just in case */
+#logoutBtn { position: relative; z-index: 1003 }
+
 #ventasSubmenu,
 #stockSubmenu,
 #cajaSubmenu {
@@ -310,6 +352,28 @@ body {
   background: #ffffff;
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
+
+/* Vistoso role selector for admin user management */
+.role-select {
+  width: 160px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  font-weight: 700;
+  color: #0f172a;
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.08);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, rgba(0,0,0,0.25) 50%), linear-gradient(135deg, rgba(0,0,0,0.25) 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(1em + 2px), calc(100% - 13px) calc(1em + 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* Context: shorten select in users table cell */
+#usersTable td:last-child .role-select { width: 140px; }
 
 .auth-btn {
   width: 100%;
