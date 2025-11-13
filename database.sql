@@ -28,8 +28,32 @@ CREATE TABLE ventas (
   id INT AUTO_INCREMENT PRIMARY KEY,
   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   total DECIMAL(10,2) NOT NULL,
+  tipo_factura VARCHAR(50) DEFAULT NULL,
   usuario_id INT,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+-- Tabla de clientes (para envíos)
+CREATE TABLE clientes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nombre VARCHAR(100) NOT NULL,
+  telefono VARCHAR(50),
+  email VARCHAR(100),
+  direccion TEXT,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabla de pedidos: registra envíos asociados a una venta y un cliente
+CREATE TABLE pedidos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  venta_id INT NOT NULL,
+  cliente_id INT NOT NULL,
+  direccion TEXT NOT NULL,
+  fecha_pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  estado ENUM('pendiente','enviado','entregado') DEFAULT 'pendiente',
+  notas TEXT,
+  FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
 );
 
 -- Detalle de cada venta

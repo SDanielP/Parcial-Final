@@ -11,7 +11,7 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-logo">
-                <h2>Sistema de Ventas</h2>
+                <h2>Soderia El Negrito</h2>
             </div>
             <div class="nav-menu">
                 <button class="nav-btn" id="loginBtn">Iniciar Sesion</button>
@@ -23,6 +23,8 @@
                         <div id="ventasSubmenu" style="display:none; position:absolute; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
                             <a href="#" id="newSaleLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Nueva venta</a>
                             <a href="#" id="salesHistoryLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial</a>
+                            <a href="#" id="pedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos</a>
+                            <a href="#" id="hojaRutaLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Hoja de ruta</a>
                         </div>
                     </div>
                     <div class="menu-item" style="position:relative;">
@@ -160,6 +162,17 @@
                             <span style="font-size:1.2rem;font-weight:600;color:#64748b;">Total:</span>
                             <span id="saleTotalValue" style="font-size:1.5rem;font-weight:700;color:#0f172a;">$0.00</span>
                         </div>
+                        <!-- Envío: checkbox y campos de cliente -->
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:12px;">
+                            <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="envioCheckbox"> Enviar a domicilio</label>
+                            <div id="envioUI" style="flex:1; display:none;">
+                                <div class="product-search" style="margin:0; align-items:center;">
+                                    <input type="search" id="clienteSearchInput" placeholder="Buscar cliente por nombre o teléfono...">
+                                    <button type="button" id="clienteNewBtn" class="auth-btn" style="background:#10b981; width:auto; padding:12px 14px;">+ Nuevo cliente</button>
+                                </div>
+                                <div id="clienteSearchResults" style="margin-top:8px; position:relative; z-index:1200;"></div>
+                            </div>
+                        </div>
                         <div style="display:flex;justify-content:flex-end;margin-top:10px;">
                             <button type="submit" class="auth-btn" style="min-width:180px;">Registrar Venta</button>
                         </div>
@@ -184,6 +197,26 @@
                         No hay ventas registradas para la fecha seleccionada
                     </div>
                     <table id="salesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Vendedor</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pedidos: panel para moderador -> listar e imprimir hoja de ruta -->
+        <section class="dashboard-section" id="pedidosSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Pedidos (Envios)</h1>
+                <div class="dashboard-card">
+                    <table id="pedidosTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Hoja de ruta: listar ventas pendientes de envío y detalle de productos por venta -->
+        <section class="dashboard-section" id="hojaRutaSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Hoja de ruta - Ventas con envío pendientes</h1>
+                <div class="dashboard-card">
+                    <table id="hojaRutaTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID Venta</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
             </div>
         </section>
@@ -346,6 +379,23 @@
                 <div style="display:flex;gap:8px;margin-top:12px;">
                     <button type="submit" class="auth-btn">Guardar</button>
                     <button type="button" id="cancelEditBtn" class="auth-btn" style="background:#ef4444;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Cliente Modal (nuevo cliente para envíos) -->
+    <div id="clienteModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>Nuevo Cliente</h3>
+            <form id="clienteModalForm">
+                <div class="form-group"><label>Nombre</label><input name="nombre" id="clienteNombre" required></div>
+                <div class="form-group"><label>Teléfono</label><input name="telefono" id="clienteTelefono"></div>
+                <div class="form-group"><label>Dirección</label><input name="direccion" id="clienteDireccion" required></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="button" id="clienteModalCreate" class="auth-btn">Crear cliente</button>
+                    <button type="button" id="clienteModalCancel" class="auth-btn" style="background:#ef4444;">Cancelar</button>
                 </div>
             </form>
         </div>

@@ -57,6 +57,11 @@ const refs = {
 let currentUser = null
 let productsCache = []
 let userDropdown = null
+let selectedCliente = null // cliente seleccionado para envio (obj)
+let clienteModal = null
+let clienteModalForm = null
+let clienteModalCreate = null
+let clienteModalCancel = null
 
 function init() {
   const ud = localStorage.getItem('userData')
@@ -93,6 +98,8 @@ function attachListeners(){
     }
   })
   document.getElementById('productsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.productsSection); loadProducts() })
+  document.getElementById('pedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('pedidosSection')); loadPedidos() })
+  document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('hojaRutaSection')); loadHojaRuta() })
   document.getElementById('addProductLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.addProductSection) })
   document.getElementById('stockReportsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); generateLowStockReport() })
   // Caja submenu links -> show specific internal panels
@@ -104,6 +111,29 @@ function attachListeners(){
   refs.registerForm?.addEventListener('submit', handleRegister)
   refs.addProductForm?.addEventListener('submit', handleAddProduct)
   refs.newSaleForm?.addEventListener('submit', handleNewSale)
+  // Envío / clientes inline UI
+  const envioCheckbox = document.getElementById('envioCheckbox')
+  const envioUI = document.getElementById('envioUI')
+  const clienteSearchInput = document.getElementById('clienteSearchInput')
+  const clienteSearchResults = document.getElementById('clienteSearchResults')
+  const clienteNewBtn = document.getElementById('clienteNewBtn')
+  // modal elements
+  clienteModal = document.getElementById('clienteModal')
+  clienteModalForm = document.getElementById('clienteModalForm')
+  clienteModalCreate = document.getElementById('clienteModalCreate')
+  clienteModalCancel = document.getElementById('clienteModalCancel')
+  if (envioCheckbox){ envioCheckbox.addEventListener('change', ()=>{ toggleEnvioUI(envioCheckbox.checked) }) }
+  // Live search while typing (debounced)
+  if (clienteSearchInput) {
+    let debounceTimer = null
+    clienteSearchInput.addEventListener('input', (e)=>{
+      clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(()=>{ searchClients(clienteSearchInput.value) }, 250)
+    })
+  }
+  if (clienteNewBtn) clienteNewBtn.addEventListener('click', ()=>{ openClienteModal() })
+  if (clienteModalCancel) clienteModalCancel.addEventListener('click', ()=>{ closeClienteModal() })
+  if (clienteModalCreate) clienteModalCreate.addEventListener('click', async ()=>{ await createClienteFromModal() })
   refs.addSaleItemBtn?.addEventListener('click', (e)=>{ e.preventDefault(); ensureProductSearch(); refs.productSearchInput?.focus(); renderSearchResults('') })
   refs.openCajaForm?.addEventListener('submit', handleOpenCaja)
   refs.closeCajaForm?.addEventListener('submit', handleCloseCaja)
@@ -234,7 +264,7 @@ function closeAllSubmenus(){
 
 function hideAllSections(){
   // Hide known sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','manageUsersSection']
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded() } }
@@ -789,7 +819,26 @@ async function handleNewSale(e){
     showMessage('No puedes vender más unidades de las disponibles en stock','error');
     return;
   }
-  const payload = { usuario_id: currentUser.id, items }
+  // incluir datos de envio si aplica
+  const envioCheckboxEl = document.getElementById('envioCheckbox')
+  const envioEnabled = envioCheckboxEl ? envioCheckboxEl.checked : false
+  let envio = { enabled: false }
+  if (envioEnabled) {
+    envio.enabled = true
+    if (selectedCliente && selectedCliente.id) {
+      envio.cliente_id = selectedCliente.id
+      envio.direccion = selectedCliente.direccion
+    } else {
+      // intentar tomar direccion desde el nuevo cliente form si está visible
+      const form = document.getElementById('clienteNewForm')
+      if (form && form.style.display !== 'none') {
+        const fd = new FormData(form)
+        envio.cliente = { nombre: fd.get('nombre'), telefono: fd.get('telefono'), email: fd.get('email'), direccion: fd.get('direccion') }
+        envio.direccion = fd.get('direccion')
+      }
+    }
+  }
+  const payload = { usuario_id: currentUser.id, items, envio }
   try{
     const res = await fetch(`${API_BASE_URL}/ventas`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
@@ -809,8 +858,320 @@ async function handleNewSale(e){
       }
       const newCaja = await getCajaActual()
       if (newCaja) loadMovements(newCaja.id)
+      // Cleanup envio UI and any cliente forms/modals
+      try{
+        if (envioCheckboxEl) { envioCheckboxEl.checked = false; toggleEnvioUI(false) }
+        const clienteNewFormEl = document.getElementById('clienteNewForm')
+        if (clienteNewFormEl) { if (clienteNewFormEl.reset) clienteNewFormEl.reset(); clienteNewFormEl.style.display = 'none' }
+        if (clienteModalForm) clienteModalForm.reset()
+        selectedCliente = null
+        const results = document.getElementById('clienteSearchResults')
+        if (results) results.innerHTML = ''
+      }catch(e){ console.warn('Error cleaning envio UI', e) }
     } else showMessage(data.error || 'Error al registrar venta','error')
   }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+// Envío / clientes helpers
+function toggleEnvioUI(enabled){
+  const envioUI = document.getElementById('envioUI')
+  if (!envioUI) return
+  envioUI.style.display = enabled ? 'block' : 'none'
+  if (!enabled) {
+    selectedCliente = null
+    const results = document.getElementById('clienteSearchResults')
+    if (results) results.innerHTML = ''
+    const form = document.getElementById('clienteNewForm')
+    if (form) form.style.display = 'none'
+  }
+}
+
+async function searchClients(q){
+  try{
+    const term = (q||'').trim()
+    const url = term ? `${API_BASE_URL}/clientes?q=${encodeURIComponent(term)}` : `${API_BASE_URL}/clientes`
+    const res = await fetch(url)
+    if (!res.ok) return showMessage('Error buscando clientes','error')
+    const data = await res.json()
+    renderClientSearchResults(data.clientes || [])
+  }catch(err){ console.error(err); showMessage('Error buscando clientes','error') }
+}
+
+function renderClientSearchResults(list){
+  const container = document.getElementById('clienteSearchResults')
+  if (!container) return
+  container.innerHTML = ''
+  if (!list || list.length === 0) { container.innerHTML = '<div style="padding:8px;color:#64748b;">No se encontraron clientes</div>'; return }
+  list.forEach(c=>{
+    const div = document.createElement('div')
+    div.className = 'search-item'
+    div.style.display = 'flex'
+    div.style.justifyContent = 'space-between'
+    div.style.alignItems = 'center'
+    div.innerHTML = `<div><strong>${escapeHtml(c.nombre)}</strong> <small style="color:#64748b">${c.telefono?('· '+escapeHtml(c.telefono)):''}</small><div style="font-size:0.9rem;color:#374151">${escapeHtml(c.direccion||'')}</div></div>`
+    const right = document.createElement('div')
+    right.style.display = 'flex'
+    right.style.flexDirection = 'column'
+    right.style.alignItems = 'flex-end'
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'auth-btn'
+    btn.textContent = 'Seleccionar'
+    btn.addEventListener('click', ()=>{ selectedCliente = c; renderSelectedCliente(c) })
+    right.appendChild(btn)
+    div.appendChild(right)
+    container.appendChild(div)
+  })
+}
+
+function renderSelectedCliente(c){
+  const container = document.getElementById('clienteSearchResults')
+  if (!container) return
+  container.innerHTML = `
+    <div style="padding:8px;color:#064e3b; display:flex; justify-content:space-between; align-items:center;">
+      <div><strong>Cliente seleccionado:</strong> ${escapeHtml(c.nombre)} — ${escapeHtml(c.direccion||'')}</div>
+      <div><button id="clienteDeselectBtn" class="auth-btn" type="button">Deseleccionar</button></div>
+    </div>`
+  const btn = document.getElementById('clienteDeselectBtn')
+  if (btn) btn.addEventListener('click', ()=>{
+    // Only clear the selected client and restore the search input — do NOT toggle the envio checkbox/UI
+    selectedCliente = null
+    const results = document.getElementById('clienteSearchResults')
+    if (results) results.innerHTML = ''
+    const input = document.getElementById('clienteSearchInput')
+    if (input) input.focus()
+  })
+}
+
+function escapeHtml(s){ if (!s && s!==0) return ''; return String(s).replace(/[&<>"']/g, function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]}) }
+
+function openClienteModal(){ if (!clienteModal) return; clienteModal.style.display = 'flex' }
+function closeClienteModal(){ if (!clienteModal) return; clienteModal.style.display = 'none'; if (clienteModalForm) clienteModalForm.reset() }
+
+async function createClienteFromModal(){
+  if (!clienteModalForm) return
+  const fd = new FormData(clienteModalForm)
+  const nombre = fd.get('nombre')
+  const direccion = fd.get('direccion')
+  if (!nombre || !direccion) return showMessage('Nombre y dirección son requeridos','error')
+  try{
+    const payload = { nombre, telefono: fd.get('telefono')||'', direccion }
+    const res = await fetch(`${API_BASE_URL}/clientes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (res.ok){
+      // seleccionar el nuevo cliente para la venta
+      selectedCliente = Object.assign({ id: data.id }, payload)
+      closeClienteModal()
+      renderSelectedCliente(selectedCliente)
+      showMessage('Cliente creado. Ahora puedes buscarlo y añadirlo a la venta','success')
+    } else {
+      showMessage(data.error || 'Error creando cliente','error')
+    }
+  }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+async function createClienteFromForm(form){
+  if (!form) return
+  const fd = new FormData(form)
+  const nombre = fd.get('nombre')
+  const direccion = fd.get('direccion')
+  if (!nombre || !direccion) return showMessage('Nombre y dirección son requeridos','error')
+  try{
+    const payload = { nombre, telefono: fd.get('telefono')||'', email: fd.get('email')||'', direccion }
+    const res = await fetch(`${API_BASE_URL}/clientes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (res.ok){
+      selectedCliente = Object.assign({ id: data.id }, payload)
+      form.style.display = 'none'
+      const results = document.getElementById('clienteSearchResults')
+      if (results) results.innerHTML = `<div style="padding:8px;color:#064e3b;"><strong>Cliente creado y seleccionado:</strong> ${payload.nombre} — ${payload.direccion}</div>`
+      showMessage('Cliente creado','success')
+    } else {
+      showMessage(data.error || 'Error creando cliente','error')
+    }
+  }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+// Pedidos: carga y print
+async function loadPedidos(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos`)
+    if (!res.ok) return showMessage('No se pudieron cargar pedidos','error')
+    const data = await res.json()
+    const rows = data.pedidos || []
+    const tbody = document.getElementById('pedidosTable')?.querySelector('tbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    rows.forEach(p=>{
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td>${p.id}</td>
+        <td>${new Date(p.fecha).toLocaleString()}</td>
+        <td>${p.cliente_nombre} (${p.telefono||''})</td>
+        <td>${p.direccion}</td>
+        <td style="text-align:right;">$${Number(p.total||0).toFixed(2)}</td>
+        <td>${p.estado}</td>
+        <td><button class="auth-btn" data-id="${p.id}">Imprimir</button></td>
+      `
+      tbody.appendChild(tr)
+      tr.querySelector('button')?.addEventListener('click', ()=>{ printPedido(p.id) })
+    })
+  }catch(err){ console.error(err); showMessage('Error cargando pedidos','error') }
+}
+
+// Hoja de ruta: listar ventas/pedidos pendientes con detalle de productos
+async function loadHojaRuta(){
+  if (!currentUser || (currentUser.rol !== 'moderador' && currentUser.rol !== 'admin')) return showMessage('Acceso denegado','error')
+  try{
+    const res = await fetch(`${API_BASE_URL}/hoja_ruta`)
+    if (!res.ok) {
+      let txt = ''
+      try { const j = await res.json(); txt = j.error || JSON.stringify(j) } catch(e){ txt = await res.text().catch(()=>res.statusText) }
+      console.error('GET /api/hoja_ruta failed', res.status, txt)
+      return showMessage('No se pudo cargar hoja de ruta: ' + (txt || res.statusText),'error')
+    }
+    const data = await res.json()
+    const rows = data.hoja || []
+    const tbody = document.getElementById('hojaRutaTable')?.querySelector('tbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    rows.forEach(r => {
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td>${r.venta_id}</td>
+        <td>${new Date(r.fecha).toLocaleString()}</td>
+        <td>${escapeHtml(r.cliente_nombre)} ${r.telefono?('('+escapeHtml(r.telefono)+')'):''}</td>
+        <td>${escapeHtml(r.direccion||'')}</td>
+        <td style="text-align:right;">$${Number(r.total||0).toFixed(2)}</td>
+        <td>${r.estado||'pendiente'}</td>
+        <td><button class="auth-btn" data-pedido-id="${r.pedido_id}">Imprimir</button></td>
+      `
+      tbody.appendChild(tr)
+      tr.querySelector('button')?.addEventListener('click', ()=>{ printHojaRuta(r) })
+    })
+  }catch(err){ console.error(err); showMessage('Error cargando hoja de ruta','error') }
+}
+
+function printHojaRuta(r){
+  try{
+    const w = window.open('', '_blank')
+    let productosHtml = ''
+    if (Array.isArray(r.productos) && r.productos.length>0){
+      productosHtml = `<table style="width:100%;border-collapse:collapse;margin-top:12px;"><thead><tr><th style="text-align:left;border-bottom:2px solid #ddd;padding:8px;">Producto</th><th style="text-align:right;border-bottom:2px solid #ddd;padding:8px;">Cantidad</th><th style="text-align:right;border-bottom:2px solid #ddd;padding:8px;">Precio</th></tr></thead><tbody>`
+      r.productos.forEach(p=>{
+        productosHtml += `<tr><td style="padding:8px;border-bottom:1px solid #f1f1f1;">${escapeHtml(p.producto_nombre)}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #f1f1f1;">${p.cantidad}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #f1f1f1;">$${Number(p.precio_unitario||0).toFixed(2)}</td></tr>`
+      })
+      productosHtml += `</tbody></table>`
+    }
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Hoja de ruta - Venta ${r.venta_id}</title>
+          <style>
+            body{font-family: Arial, Helvetica, sans-serif; color:#222; margin:0; padding:20px;}
+            .invoice{max-width:800px;margin:0 auto;border:1px solid #000;padding:20px;}
+            .inv-header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #222;padding-bottom:12px;margin-bottom:16px}
+            .company{font-size:18px;font-weight:700}
+            .meta{font-size:0.95rem;text-align:right}
+            .meta div{margin-bottom:4px}
+            .customer{margin-top:8px}
+            table.items{width:100%;border-collapse:collapse;margin-top:12px}
+            table.items th, table.items td{border:1px solid #bbb;padding:8px}
+            table.items th{background:#f3f4f6;text-align:left}
+            .totals{margin-top:12px;display:flex;justify-content:flex-end}
+            .totals .box{width:300px}
+            .right{text-align:right}
+            hr.sep{border:none;border-top:1px dashed #999;margin:18px 0}
+            @media print{
+              body{padding:0}
+              .invoice{ -webkit-print-color-adjust: exact; print-color-adjust: exact; margin:0 auto; }
+              @page { size: auto; margin: 12mm; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="invoice">
+            <div class="inv-header">
+              <div class="company">Soderia El Negrito<br><small style="font-weight:400">Hoja de ruta / Remito</small></div>
+              <div class="meta">
+                <div><strong>Venta:</strong> ${r.venta_id}</div>
+                <div><strong>Fecha:</strong> ${new Date(r.fecha).toLocaleString()}</div>
+              </div>
+            </div>
+            <div class="customer">
+              <div><strong>Cliente:</strong> ${escapeHtml(r.cliente_nombre)}</div>
+              <div><strong>Teléfono:</strong> ${escapeHtml(r.telefono||'')}</div>
+              <div><strong>Dirección:</strong> ${escapeHtml(r.direccion||'')}</div>
+            </div>
+            ${productosHtml || '<div style="margin-top:12px;color:#64748b">No hay productos en el detalle</div>'}
+            <div class="totals">
+              <div class="box">
+                <table style="width:100%;border-collapse:collapse">
+                  <tr><td style="border:none;padding:6px">Total</td><td class="right" style="border:none;padding:6px">$${Number(r.total||0).toFixed(2)}</td></tr>
+                </table>
+              </div>
+            </div>
+            <hr class="sep">
+            <div style="font-size:0.9rem;color:#374151">Imprimir y adjuntar al envío. Firma del remitente: ________________________</div>
+          </div>
+        </body>
+      </html>`
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(()=>{ w.print(); w.close() }, 250)
+  }catch(err){ console.error('Error imprimiendo hoja de ruta', err); showMessage('Error imprimiendo hoja de ruta','error') }
+}
+
+async function printPedido(id){
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos/${id}`)
+    if (!res.ok) return showMessage('No se pudo obtener pedido','error')
+    const data = await res.json()
+    const p = data.pedido
+    const w = window.open('', '_blank')
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Hoja de ruta - Pedido ${p.id}</title>
+          <style>
+            body{font-family: Arial, Helvetica, sans-serif; color:#222; margin:0; padding:20px}
+            .invoice{max-width:700px;margin:0 auto;border:1px solid #000;padding:18px}
+            .inv-header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:14px}
+            .company{font-size:17px;font-weight:700}
+            .meta{font-size:0.95rem;text-align:right}
+            table.info, table.info td{border:none}
+            .right{text-align:right}
+            hr.sep{border:none;border-top:1px dashed #999;margin:14px 0}
+            @media print{ body{padding:0} .invoice{ -webkit-print-color-adjust: exact; print-color-adjust: exact; margin:0 auto; } @page { size: auto; margin: 12mm; } }
+          </style>
+        </head>
+        <body>
+          <div class="invoice">
+            <div class="inv-header">
+              <div class="company">Soderia El Negrito<br><small style="font-weight:400">Remito / Pedido</small></div>
+              <div class="meta">
+                <div><strong>Pedido:</strong> ${p.id}</div>
+                <div><strong>Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</div>
+              </div>
+            </div>
+            <div style="margin-bottom:8px"><strong>Cliente:</strong> ${escapeHtml(p.cliente_nombre||'')}</div>
+            <div style="margin-bottom:8px"><strong>Teléfono:</strong> ${escapeHtml(p.telefono||'')}</div>
+            <div style="margin-bottom:8px"><strong>Dirección:</strong> ${escapeHtml(p.direccion||'')}</div>
+            <hr class="sep">
+            <div style="margin-top:10px;font-weight:600;text-align:right">Total: $${Number(p.total||0).toFixed(2)}</div>
+            <hr class="sep">
+            <div style="font-size:0.9rem;color:#374151">Imprimir y adjuntar al envío. Firma: ________________________</div>
+          </div>
+        </body>
+      </html>`
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(()=>{ w.print(); w.close() }, 250)
+  }catch(err){ console.error(err); showMessage('Error imprimiendo pedido','error') }
 }
 
 function computeSaleTotal(){

@@ -81,6 +81,18 @@ body {
   color: #6366f1;
   border-color: #ffffff;
 }
+.search-item.selected {
+  border: 2px solid #10b981;
+  background: linear-gradient(90deg,#ecfdf5 0%, #ecfeef 100%);
+}
+.search-item button.auth-btn {
+  padding: 6px 10px;
+  font-size: 0.9rem;
+}
+
+/* Cliente modal tweaks */
+.modal-content form .form-group input { width: 100%; }
+.modal-content { max-width:720px; }
 
 /* Dropdown menu styles with colors */
 #mainMenu {

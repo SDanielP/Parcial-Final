@@ -110,6 +110,105 @@ router.post('/productos', async (req, res) => {
   }
 });
 
+// Clientes endpoints (para envíos)
+// GET /api/clientes?q=texto -> buscar clientes por nombre/email/telefono
+router.get('/clientes', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  try {
+    if (!q) {
+      // devolver clientes (sin email para compatibilidad con esquemas antiguos)
+      const rows = await query('SELECT id, nombre, telefono, direccion, creado_en FROM clientes ORDER BY creado_en DESC LIMIT 100');
+      return res.json({ clientes: rows });
+    }
+    const like = `%${q}%`;
+    // Buscar por nombre o telefono (compatibilizar si no existe columna email)
+    const rows = await query('SELECT id, nombre, telefono, direccion FROM clientes WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre LIMIT 50', [like, like]);
+    res.json({ clientes: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/clientes -> crear cliente
+// body: { nombre, telefono, email, direccion }
+router.post('/clientes', async (req, res) => {
+  // Compatibilidad: la tabla 'clientes' puede no tener columna email.
+  const { nombre, telefono, email, direccion } = req.body;
+  if (!nombre || !direccion) return res.status(400).json({ error: 'Faltan datos de cliente (nombre y direccion requeridos para envíos)' });
+  try {
+    // Insert compatible con tu tabla actual (nombre, telefono, direccion)
+    const result = await query('INSERT INTO clientes (nombre, telefono, direccion) VALUES (?, ?, ?)', [nombre, telefono || '', direccion]);
+    return res.status(201).json({ message: 'Cliente creado', id: result.insertId });
+  } catch (err) {
+    console.error('[CLIENTES] error creando cliente', err)
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pedidos endpoints (moderador)
+// GET /api/pedidos -> listar pedidos
+router.get('/pedidos', async (req, res) => {
+  try {
+    // Select the pedido row without referencing potentially-missing columns like fecha_pedido
+    const rows = await query(`SELECT p.*, c.id AS cliente_id, c.nombre AS cliente_nombre, c.telefono, v.total
+      FROM pedidos p
+      LEFT JOIN clientes c ON p.cliente_id = c.id
+      LEFT JOIN ventas v ON p.venta_id = v.id
+      ORDER BY p.id DESC`);
+
+    // Normalize fecha: prefer p.fecha, then p.fecha_pedido if present
+    const safe = rows.map(r => ({ ...r, fecha: r.fecha || r.fecha_pedido || null }));
+    res.json({ pedidos: safe });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/hoja_ruta -> listar pedidos pendientes con detalle de productos (para imprimir hoja de ruta)
+router.get('/hoja_ruta', async (req, res) => {
+  try {
+    // Obtener pedidos pendientes (estado = 'pendiente' o NULL) junto con datos del cliente y venta
+    const pedidos = await query(`SELECT p.*, c.id AS cliente_id, c.nombre AS cliente_nombre, c.telefono, v.total
+      FROM pedidos p
+      LEFT JOIN clientes c ON p.cliente_id = c.id
+      LEFT JOIN ventas v ON p.venta_id = v.id
+      WHERE p.estado = 'pendiente' OR p.estado IS NULL
+      ORDER BY p.id DESC`);
+
+    // Para cada pedido, traer detalle de productos y normalizar fecha
+    for (let i = 0; i < pedidos.length; i++){
+      const ped = pedidos[i]
+      // Normalize fecha: prefer p.fecha, then p.fecha_pedido if present
+      ped.fecha = ped.fecha || ped.fecha_pedido || null;
+      const detalles = await query(`SELECT dv.producto_id, dv.cantidad, dv.precio_unitario, pr.nombre AS producto_nombre FROM detalle_venta dv JOIN productos pr ON dv.producto_id = pr.id WHERE dv.venta_id = ?`, [ped.venta_id])
+      ped.productos = detalles || []
+    }
+
+    res.json({ hoja: pedidos })
+  } catch (err) {
+    console.error('Error en /hoja_ruta:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/pedidos/:id -> obtener detalle de pedido (para imprimir hoja de ruta)
+router.get('/pedidos/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const rows = await query(`SELECT p.*, c.id AS cliente_id, c.nombre AS cliente_nombre, c.telefono, v.total
+      FROM pedidos p
+      LEFT JOIN clientes c ON p.cliente_id = c.id
+      LEFT JOIN ventas v ON p.venta_id = v.id
+      WHERE p.id = ? LIMIT 1`, [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const pedido = rows[0]
+    pedido.fecha = pedido.fecha || pedido.fecha_pedido || null
+    res.json({ pedido });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/productos/:id -> update product
 router.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
@@ -125,9 +224,9 @@ router.put('/productos/:id', async (req, res) => {
 
 // Ventas endpoints
 // POST /api/ventas -> create a sale
-// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }] }
+// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
 router.post('/ventas', async (req, res) => {
-  const { usuario_id, items } = req.body;
+  const { usuario_id, items, envio } = req.body;
   if (!usuario_id || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Faltan datos de la venta' });
   const conn = await pool.promise().getConnection();
   try {
@@ -137,12 +236,37 @@ router.post('/ventas', async (req, res) => {
       total += Number(it.precio_unitario) * Number(it.cantidad);
     }
   const [ventaResult] = await conn.query('INSERT INTO ventas (total, usuario_id) VALUES (?, ?)', [total, usuario_id]);
-  const ventaId = ventaResult.insertId;
+    const ventaId = ventaResult.insertId;
     for (const it of items) {
       await conn.query('INSERT INTO detalle_venta (venta_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)', [ventaId, it.producto_id, it.cantidad, it.precio_unitario]);
       // decrement stock
       await conn.query('UPDATE productos SET stock = stock - ? WHERE id = ?', [it.cantidad, it.producto_id]);
     }
+
+    // Si la venta tiene envío, asegurarse de crear/usar cliente y crear el pedido
+    let pedidoInserted = false
+    let pedidoId = null
+    if (envio && envio.enabled) {
+      let clienteId = envio.cliente_id || null
+      // si viene cliente con datos, crearlo
+      if (!clienteId && envio.cliente && envio.cliente.nombre && envio.cliente.direccion) {
+        const c = envio.cliente
+        const [cRes] = await conn.query('INSERT INTO clientes (nombre, telefono, email, direccion) VALUES (?, ?, ?, ?)', [c.nombre, c.telefono || '', c.email || '', c.direccion]);
+        clienteId = cRes.insertId
+      }
+      if (clienteId) {
+        const direccion = envio.direccion || envio.cliente?.direccion || ''
+        // Some DB schemas don't include the optional 'notas' column — insert only the common fields
+        const [pRes] = await conn.query('INSERT INTO pedidos (venta_id, cliente_id, direccion) VALUES (?, ?, ?)', [ventaId, clienteId, direccion]);
+        pedidoInserted = Boolean(pRes && pRes.insertId)
+        pedidoId = pRes.insertId
+      } else {
+        // no se pudo determinar cliente -> rollback y error
+        await conn.rollback();
+        return res.status(400).json({ error: 'Envio activado pero no se pudo obtener o crear el cliente' });
+      }
+    }
+
     // intentar registrar movimiento en caja actual (si existe)
     let movimientoInserted = false
     let movimientoId = null
@@ -162,8 +286,8 @@ router.post('/ventas', async (req, res) => {
       console.error('Error registrando movimiento de caja para la venta', errMov)
     }
     await conn.commit();
-    console.log('Venta registrada:', { ventaId, movimientoInserted, movimientoId, cajaId: cajaUsedId })
-    res.status(201).json({ message: 'Venta registrada', ventaId, movimientoInserted, movimientoId, cajaId: cajaUsedId });
+  console.log('Venta registrada:', { ventaId, movimientoInserted, movimientoId, cajaId: cajaUsedId, pedidoInserted, pedidoId })
+  res.status(201).json({ message: 'Venta registrada', ventaId, movimientoInserted, movimientoId, cajaId: cajaUsedId, pedidoInserted, pedidoId });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
