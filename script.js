@@ -264,9 +264,19 @@ function closeAllSubmenus(){
   if (refs.adminSubmenu) refs.adminSubmenu.style.display = 'none'
 }
 
+function closeAllModals(){
+  // Close all modals (pedido proveedor, cliente modal, etc)
+  console.log('Cerrando modales, encontrados:', document.querySelectorAll('.modal').length)
+  document.querySelectorAll('.modal').forEach(modal => {
+    console.log('Removiendo modal:', modal.id)
+    modal.remove()
+  })
+}
+
 function hideAllSections(){
   // Hide known sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection']
+  closeAllModals() // Close any open modals when changing sections
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded() } }
@@ -683,6 +693,7 @@ function logout(){
   currentUser = null
   // Close any open submenus and sections to avoid residual UI after logout
   closeAllSubmenus()
+  closeAllModals()
   hideAllSections()
   updateNav()
   showWelcome()
@@ -809,6 +820,12 @@ async function handleNewSale(e){
   // verify caja abierta
   const caja = await getCajaActual()
   if (!caja) return showMessage('No hay caja abierta. Abre la caja antes de registrar ventas.','error')
+  
+  // Obtener tipo de pago
+  const tipoPagoSelect = document.getElementById('tipoPago')
+  const tipo_pago = tipoPagoSelect ? tipoPagoSelect.value : 'efectivo'
+  if (!tipo_pago) return showMessage('Selecciona un tipo de pago','error')
+  
   const rows = [...refs.saleProductsContainer.querySelectorAll('.sale-item')]
   if (rows.length === 0) return showMessage('Agrega al menos un producto','error')
   let valid = true;
@@ -848,7 +865,8 @@ async function handleNewSale(e){
       }
     }
   }
-  const payload = { usuario_id: currentUser.id, items, envio }
+  const payload = { usuario_id: currentUser.id, items, tipo_pago, envio }
+  console.log('Payload venta:', payload) // DEBUG
   try{
     const res = await fetch(`${API_BASE_URL}/ventas`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()

@@ -352,10 +352,12 @@ router.put('/productos/:id', async (req, res) => {
 
 // Ventas endpoints
 // POST /api/ventas -> create a sale
-// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
+// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], tipo_pago, envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
 router.post('/ventas', async (req, res) => {
-  const { usuario_id, items, envio } = req.body;
+  const { usuario_id, items, tipo_pago, envio } = req.body;
   if (!usuario_id || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Faltan datos de la venta' });
+  if (!tipo_pago) return res.status(400).json({ error: 'Tipo de pago requerido' });
+  
   const conn = await pool.promise().getConnection();
   try {
     await conn.beginTransaction();
@@ -365,6 +367,10 @@ router.post('/ventas', async (req, res) => {
     }
   const [ventaResult] = await conn.query('INSERT INTO ventas (total, usuario_id) VALUES (?, ?)', [total, usuario_id]);
     const ventaId = ventaResult.insertId;
+    
+    // Registrar el pago
+    await conn.query('INSERT INTO pagos (venta_id, tipo_pago, monto) VALUES (?, ?, ?)', [ventaId, tipo_pago, total]);
+    
     for (const it of items) {
       await conn.query('INSERT INTO detalle_venta (venta_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)', [ventaId, it.producto_id, it.cantidad, it.precio_unitario]);
       // decrement stock
