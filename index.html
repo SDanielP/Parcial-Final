@@ -33,6 +33,7 @@
                             <a href="#" id="productsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Productos</a>
                             <a href="#" id="addProductLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Ingresar producto</a>
                             <a href="#" id="stockReportsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Reportes</a>
+                                <a href="#" id="stockPedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos Proveedores</a>
                         </div>
                     </div>
                     <div class="menu-item" style="position:relative;">
@@ -271,6 +272,33 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stock: Pedidos a Proveedores -->
+        <section class="dashboard-section" id="stockPedidosSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Pedidos a Proveedores</h1>
+                <div class="dashboard-card">
+                    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+                        <label style="min-width:100px">Proveedor</label>
+                        <select id="proveedorFilter" style="flex:1"><option value="">-- Seleccionar proveedor --</option></select>
+                        <input id="stockPedidoProductSearch" placeholder="Buscar producto..." style="flex:2;padding:8px;margin-left:8px;" />
+                        <button id="stockPedidoSearchBtn" class="auth-btn">Buscar</button>
+                    </div>
+                    <div id="stockPedidoResults" style="max-height:240px; overflow:auto; border:1px solid #e5e7eb; padding:8px; border-radius:6px; background:#fff"></div>
+                    <h3 style="margin-top:12px">Carrito de Pedido</h3>
+                    <div id="stockPedidoCart" style="border:1px dashed #e2e8f0; padding:12px; min-height:80px;"></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:12px;align-items:center;">
+                        <div id="stockPedidoMsg" style="color:#64748b"></div>
+                        <div>
+                            <button id="createProveedorOrderBtn" class="auth-btn" style="background:#0ea5a4">Crear Pedido</button>
+                        </div>
+                    </div>
+                    <hr style="margin:16px 0" />
+                    <h3>Pedidos Existentes</h3>
+                    <table id="proveedorOrdersTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Proveedor</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
             </div>
         </section>

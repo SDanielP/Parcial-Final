@@ -102,6 +102,7 @@ function attachListeners(){
   document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('hojaRutaSection')); loadHojaRuta() })
   document.getElementById('addProductLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.addProductSection) })
   document.getElementById('stockReportsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); generateLowStockReport() })
+  document.getElementById('stockPedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('stockPedidosSection')); openStockPedidos() })
   // Caja submenu links -> show specific internal panels
   document.getElementById('cajaOpenLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('apertura') })
   document.getElementById('cajaCloseLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('cierre') })
@@ -1018,6 +1019,143 @@ async function loadPedidos(){
     })
   }catch(err){ console.error(err); showMessage('Error cargando pedidos','error') }
 }
+
+// ---------- Proveedores / Pedidos a proveedores (frontend) ----------
+async function loadProveedores(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/proveedores`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.proveedores || []
+  }catch(err){ console.error('Error cargando proveedores', err); return [] }
+}
+
+async function openStockPedidos(){
+  // Ensure products and providers loaded
+  ensureProductsLoaded()
+  const proveedores = await loadProveedores()
+  const sel = document.getElementById('proveedorFilter')
+  if (sel){
+    sel.innerHTML = '<option value="">-- Seleccionar proveedor --</option>'
+    proveedores.forEach(p=>{ const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.nombre; sel.appendChild(opt) })
+  }
+  // attach search button
+  document.getElementById('stockPedidoSearchBtn')?.addEventListener('click', ()=>{ renderStockPedidoSearch() })
+  document.getElementById('stockPedidoProductSearch')?.addEventListener('keypress', (e)=>{ if (e.key==='Enter'){ e.preventDefault(); renderStockPedidoSearch() } })
+  // load existing orders
+  loadProveedorOrders()
+  // clear cart
+  window.stockPedidoCart = []
+  renderStockPedidoCart()
+}
+
+function renderStockPedidoSearch(){
+  const q = (document.getElementById('stockPedidoProductSearch')?.value||'').trim().toLowerCase()
+  const results = document.getElementById('stockPedidoResults')
+  if (!results) return
+  results.innerHTML = ''
+  const matches = q ? productsCache.filter(p=>p.nombre.toLowerCase().includes(q)) : productsCache.slice(0,50)
+  if (!matches || matches.length===0) { results.innerHTML = '<div style="padding:8px;color:#64748b">No se encontraron productos</div>'; return }
+  matches.forEach(p=>{
+    const div = document.createElement('div')
+    div.style.display = 'flex'
+    div.style.justifyContent = 'space-between'
+    div.style.alignItems = 'center'
+    div.style.padding = '6px 0'
+    div.innerHTML = `<div><strong>${escapeHtml(p.nombre)}</strong> <small style="color:#64748b">${escapeHtml(p.descripcion||'')}</small></div><div style="display:flex;gap:8px;align-items:center"><input type="number" min="1" value="1" style="width:70px;padding:6px" data-id="${p.id}" class="stock-pedido-qty" /><button class="auth-btn" data-id="${p.id}">Agregar</button></div>`
+    results.appendChild(div)
+    div.querySelector('button')?.addEventListener('click', ()=>{
+      const id = Number(div.querySelector('button').dataset.id)
+      const qtyEl = div.querySelector('.stock-pedido-qty')
+      const qty = Number(qtyEl.value) || 1
+      const prod = productsCache.find(x=>x.id===id)
+      if (!prod) return showMessage('Producto no encontrado','error')
+      addToStockPedidoCart(prod, qty)
+    })
+  })
+}
+
+function addToStockPedidoCart(product, cantidad){
+  if (!window.stockPedidoCart) window.stockPedidoCart = []
+  const existing = window.stockPedidoCart.find(i=>i.producto_id===product.id)
+  if (existing){ existing.cantidad += Number(cantidad); } else { window.stockPedidoCart.push({ producto_id: product.id, nombre: product.nombre, cantidad: Number(cantidad), precio_unitario: Number(product.precio||0) }) }
+  renderStockPedidoCart()
+}
+
+function renderStockPedidoCart(){
+  const container = document.getElementById('stockPedidoCart')
+  if (!container) return
+  const cart = window.stockPedidoCart || []
+  if (cart.length === 0) { container.innerHTML = '<div style="color:#64748b">Carrito vacío</div>'; return }
+  container.innerHTML = ''
+  cart.forEach((it, idx)=>{
+    const row = document.createElement('div')
+    row.style.display = 'flex'
+    row.style.justifyContent = 'space-between'
+    row.style.alignItems = 'center'
+    row.style.padding = '6px 0'
+    row.innerHTML = `<div>${escapeHtml(it.nombre)}</div><div style="display:flex;gap:8px;align-items:center"><input type="number" min="1" value="${it.cantidad}" style="width:80px;padding:6px" data-idx="${idx}" class="cart-qty" /><button class="auth-btn" data-idx="${idx}">Quitar</button></div>`
+    container.appendChild(row)
+    row.querySelector('.cart-qty')?.addEventListener('input', (e)=>{ const i = Number(e.target.dataset.idx); const v = Number(e.target.value)||1; window.stockPedidoCart[i].cantidad = v; renderStockPedidoCart() })
+    row.querySelector('button')?.addEventListener('click', ()=>{ const i = Number(row.querySelector('button').dataset.idx); window.stockPedidoCart.splice(i,1); renderStockPedidoCart() })
+  })
+}
+
+async function createProveedorOrder(){
+  const proveedorId = Number(document.getElementById('proveedorFilter')?.value||0)
+  if (!proveedorId) return showMessage('Selecciona un proveedor','error')
+  const items = (window.stockPedidoCart||[]).map(i=>({ producto_id: i.producto_id, cantidad: i.cantidad, precio_unitario: i.precio_unitario }))
+  if (items.length === 0) return showMessage('Agrega al menos un producto al carrito','error')
+  try{
+    const payload = { proveedor_id: proveedorId, notas: '', items }
+    const res = await fetch(`${API_BASE_URL}/pedidos_proveedor`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (res.ok){ showMessage('Pedido creado','success'); window.stockPedidoCart = []; renderStockPedidoCart(); loadProveedorOrders() } else { showMessage(data.error || 'Error creando pedido','error') }
+  }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+async function loadProveedorOrders(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos_proveedor`)
+    if (!res.ok) return console.error('No se pudo cargar pedidos a proveedores')
+    const data = await res.json()
+    const rows = data.pedidos || []
+    const tbody = document.getElementById('proveedorOrdersTable')?.querySelector('tbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    rows.forEach(r=>{
+      const tr = document.createElement('tr')
+      tr.innerHTML = `<td>${r.id}</td><td>${escapeHtml(r.proveedor_nombre||'')}</td><td>${new Date(r.fecha).toLocaleString()}</td><td>${r.estado}</td><td><button class="auth-btn" data-id="${r.id}">Ver</button></td>`
+      tbody.appendChild(tr)
+      tr.querySelector('button')?.addEventListener('click', ()=>{ viewProveedorOrder(r.id) })
+    })
+  }catch(err){ console.error('Error cargando pedidos proveedor', err) }
+}
+
+async function viewProveedorOrder(id){
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos_proveedor/${id}`)
+    if (!res.ok) return showMessage('No se pudo obtener pedido','error')
+    const data = await res.json()
+    const p = data.pedido
+    let itemsHtml = ''
+    if (Array.isArray(p.items) && p.items.length>0){
+      itemsHtml = '<table style="width:100%;border-collapse:collapse"><thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr></thead><tbody>'
+      p.items.forEach(it=>{ itemsHtml += `<tr><td>${escapeHtml(it.producto_nombre)}</td><td style="text-align:right">${it.cantidad}</td><td style="text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td></tr>` })
+      itemsHtml += '</tbody></table>'
+    }
+    const w = window.open('', '_blank')
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pedido proveedor ${p.id}</title></head><body><h2>Pedido #${p.id} - ${escapeHtml(p.proveedor_nombre||'')}</h2><p><strong>Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</p>${itemsHtml}</body></html>`)
+    w.document.close()
+    w.print()
+  }catch(err){ console.error(err); showMessage('Error mostrando pedido','error') }
+}
+
+// Attach create button handler
+document.addEventListener('click', (e)=>{
+  if (e.target && e.target.id === 'createProveedorOrderBtn') { e.preventDefault(); createProveedorOrder() }
+})
+
 
 // Hoja de ruta: listar ventas/pedidos pendientes con detalle de productos
 async function loadHojaRuta(){

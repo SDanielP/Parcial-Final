@@ -13,7 +13,6 @@ CREATE TABLE usuarios (
   rol ENUM('admin','moderador','vendedor','cajero','pendiente') DEFAULT 'pendiente'
 );
 
--- Tabla de productos
 CREATE TABLE productos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(100) NOT NULL,
@@ -21,6 +20,43 @@ CREATE TABLE productos (
   precio DECIMAL(10,2) NOT NULL,
   stock INT NOT NULL DEFAULT 0,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+-- Nueva columna: categoria y proveedor (opcional)
+-- Si quieres habilitarlas en tu base de datos en producción, ejecuta:
+-- ALTER TABLE productos ADD COLUMN categoria VARCHAR(100) NULL;
+-- ALTER TABLE productos ADD COLUMN proveedor_id INT NULL;
+
+-- Tabla proveedores
+CREATE TABLE IF NOT EXISTS proveedores (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nombre VARCHAR(255) NOT NULL,
+  contacto VARCHAR(255),
+  telefono VARCHAR(64),
+  email VARCHAR(255),
+  direccion TEXT,
+  creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pedidos a proveedores (cabecera)
+CREATE TABLE IF NOT EXISTS pedidos_proveedor (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  proveedor_id INT NOT NULL,
+  fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+  estado VARCHAR(50) DEFAULT 'pendiente',
+  notas TEXT,
+  creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
+);
+
+-- Items de cada pedido a proveedor
+CREATE TABLE IF NOT EXISTS pedido_proveedor_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pedido_id INT NOT NULL,
+  producto_id INT NOT NULL,
+  cantidad INT NOT NULL,
+  precio_unitario DECIMAL(10,2) DEFAULT 0,
+  FOREIGN KEY (pedido_id) REFERENCES pedidos_proveedor(id),
+  FOREIGN KEY (producto_id) REFERENCES productos(id)
 );
 
 -- Tabla de ventas
