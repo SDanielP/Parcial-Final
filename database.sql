@@ -19,12 +19,12 @@ CREATE TABLE productos (
   descripcion TEXT,
   precio DECIMAL(10,2) NOT NULL,
   stock INT NOT NULL DEFAULT 0,
-  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  proveedor_id INT NULL,
+  categoria VARCHAR(100) NULL,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL
 );
--- Nueva columna: categoria y proveedor (opcional)
--- Si quieres habilitarlas en tu base de datos en producción, ejecuta:
--- ALTER TABLE productos ADD COLUMN categoria VARCHAR(100) NULL;
--- ALTER TABLE productos ADD COLUMN proveedor_id INT NULL;
+-- Nueva columna: categoria y proveedor ya incluidas en la tabla
 
 -- Tabla proveedores
 CREATE TABLE IF NOT EXISTS proveedores (

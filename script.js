@@ -1,3 +1,4 @@
+
 // Clean single-file frontend script for Negocio admin system
 
 const API_BASE_URL = 'http://localhost:3000/api'
@@ -100,7 +101,7 @@ function attachListeners(){
   document.getElementById('productsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.productsSection); loadProducts() })
   document.getElementById('pedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('pedidosSection')); loadPedidos() })
   document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('hojaRutaSection')); loadHojaRuta() })
-  document.getElementById('addProductLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.addProductSection) })
+  document.getElementById('addProductLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); showSection(refs.addProductSection); await loadProveedoresInAddProductForm() })
   document.getElementById('stockReportsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); generateLowStockReport() })
   document.getElementById('stockPedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('stockPedidosSection')); openStockPedidos() })
   // Caja submenu links -> show specific internal panels
@@ -691,7 +692,8 @@ function logout(){
 // Products
 async function loadProducts(){
   try{
-    const res = await fetch(`${API_BASE_URL}/productos`)
+    // Use productos_ext to get proveedor_id field for filtering
+    const res = await fetch(`${API_BASE_URL}/productos_ext`)
     const data = await res.json()
     productsCache = data.productos || []
     if (!refs.productsTable) return
@@ -759,7 +761,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 async function handleAddProduct(e){
   e.preventDefault()
   const fd = new FormData(refs.addProductForm)
-  const payload = { nombre: fd.get('nombre'), descripcion: fd.get('descripcion'), precio: Number(fd.get('precio')), stock: Number(fd.get('stock')) }
+  const proveedorId = fd.get('proveedor_id')
+  const payload = { 
+    nombre: fd.get('nombre'), 
+    descripcion: fd.get('descripcion'), 
+    precio: Number(fd.get('precio')), 
+    stock: Number(fd.get('stock')),
+    proveedor_id: proveedorId && proveedorId !== '' ? Number(proveedorId) : null
+  }
   try{
     const res = await fetch(`${API_BASE_URL}/productos`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
@@ -1030,6 +1039,19 @@ async function loadProveedores(){
   }catch(err){ console.error('Error cargando proveedores', err); return [] }
 }
 
+async function loadProveedoresInAddProductForm(){
+  const select = document.getElementById('addProductProveedorSelect')
+  if (!select) return
+  const proveedores = await loadProveedores()
+  select.innerHTML = '<option value="">-- Seleccionar proveedor (opcional) --</option>'
+  proveedores.forEach(p => {
+    const opt = document.createElement('option')
+    opt.value = p.id
+    opt.textContent = p.nombre
+    select.appendChild(opt)
+  })
+}
+
 async function openStockPedidos(){
   // Ensure products and providers loaded
   ensureProductsLoaded()
@@ -1038,6 +1060,13 @@ async function openStockPedidos(){
   if (sel){
     sel.innerHTML = '<option value="">-- Seleccionar proveedor --</option>'
     proveedores.forEach(p=>{ const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.nombre; sel.appendChild(opt) })
+    // Add listener to filter products when provider changes
+    sel.addEventListener('change', ()=>{ 
+      renderStockPedidoSearch()
+      // Clear cart when changing provider
+      window.stockPedidoCart = []
+      renderStockPedidoCart()
+    })
   }
   // attach search button
   document.getElementById('stockPedidoSearchBtn')?.addEventListener('click', ()=>{ renderStockPedidoSearch() })
@@ -1051,11 +1080,26 @@ async function openStockPedidos(){
 
 function renderStockPedidoSearch(){
   const q = (document.getElementById('stockPedidoProductSearch')?.value||'').trim().toLowerCase()
+  const proveedorId = Number(document.getElementById('proveedorFilter')?.value||0)
   const results = document.getElementById('stockPedidoResults')
   if (!results) return
   results.innerHTML = ''
-  const matches = q ? productsCache.filter(p=>p.nombre.toLowerCase().includes(q)) : productsCache.slice(0,50)
+  
+  // First filter by provider if selected
+  let filteredProducts = productsCache
+  if (proveedorId > 0) {
+    // Show ONLY products assigned to this provider (strict filter)
+    filteredProducts = productsCache.filter(p => Number(p.proveedor_id) === proveedorId)
+    if (filteredProducts.length === 0) {
+      results.innerHTML = '<div style="padding:8px;color:#64748b">No hay productos asociados a este proveedor. Por favor asigna productos a este proveedor desde el módulo de Stock > Productos.</div>'
+      return
+    }
+  }
+  
+  // Then filter by search query
+  const matches = q ? filteredProducts.filter(p=>p.nombre.toLowerCase().includes(q)) : filteredProducts.slice(0,50)
   if (!matches || matches.length===0) { results.innerHTML = '<div style="padding:8px;color:#64748b">No se encontraron productos</div>'; return }
+  
   matches.forEach(p=>{
     const div = document.createElement('div')
     div.style.display = 'flex'
@@ -1138,14 +1182,195 @@ async function viewProveedorOrder(id){
     if (!res.ok) return showMessage('No se pudo obtener pedido','error')
     const data = await res.json()
     const p = data.pedido
+    
+    // Create modal for viewing and managing order
+    const modalId = 'proveedorOrderModal_' + id
+    let existingModal = document.getElementById(modalId)
+    if (existingModal) existingModal.remove()
+    
+    // Calculate total
+    let total = 0
+    if (Array.isArray(p.items) && p.items.length > 0) {
+      total = p.items.reduce((sum, it) => sum + (Number(it.cantidad) * Number(it.precio_unitario || 0)), 0)
+    }
+    
     let itemsHtml = ''
     if (Array.isArray(p.items) && p.items.length>0){
-      itemsHtml = '<table style="width:100%;border-collapse:collapse"><thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr></thead><tbody>'
-      p.items.forEach(it=>{ itemsHtml += `<tr><td>${escapeHtml(it.producto_nombre)}</td><td style="text-align:right">${it.cantidad}</td><td style="text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td></tr>` })
+      itemsHtml = '<table style="width:100%;border-collapse:collapse;margin-top:20px;border:2px solid #333"><thead><tr style="background:#f3f4f6"><th style="border:1px solid #666;padding:10px;text-align:left">Producto</th><th style="border:1px solid #666;padding:10px;text-align:center">Cantidad</th><th style="border:1px solid #666;padding:10px;text-align:right">Precio Unit.</th><th style="border:1px solid #666;padding:10px;text-align:right">Subtotal</th></tr></thead><tbody>'
+      p.items.forEach(it=>{ 
+        const subtotal = Number(it.cantidad) * Number(it.precio_unitario || 0)
+        itemsHtml += `<tr><td style="border:1px solid #666;padding:8px">${escapeHtml(it.producto_nombre)}</td><td style="border:1px solid #666;padding:8px;text-align:center">${it.cantidad}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${subtotal.toFixed(2)}</td></tr>` 
+      })
+      itemsHtml += `<tr style="font-weight:bold;background:#f9fafb"><td colspan="3" style="border:1px solid #666;padding:10px;text-align:right">TOTAL:</td><td style="border:1px solid #666;padding:10px;text-align:right">$${total.toFixed(2)}</td></tr>`
       itemsHtml += '</tbody></table>'
     }
+    
+    const modal = document.createElement('div')
+    modal.id = modalId
+    modal.className = 'modal'
+    modal.style.display = 'flex'
+    modal.innerHTML = `
+      <div class="modal-overlay" onclick="document.getElementById('${modalId}').remove()"></div>
+      <div class="modal-content" style="max-width:900px;max-height:90vh;overflow-y:auto">
+        <h3 style="margin-bottom:20px;color:#6366f1">📋 Pedido a Proveedor #${p.id}</h3>
+        
+        <div style="background:#f9fafb;border:2px solid #e2e8f0;padding:20px;border-radius:12px;margin-bottom:20px">
+          <h4 style="margin:0 0 15px 0;color:#111;font-size:18px">📦 Datos del Proveedor</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><strong style="color:#64748b">Nombre:</strong> ${escapeHtml(p.proveedor_nombre || 'N/A')}</div>
+            <div><strong style="color:#64748b">Contacto:</strong> ${escapeHtml(p.contacto || 'N/A')}</div>
+            <div><strong style="color:#64748b">Teléfono:</strong> ${escapeHtml(p.telefono || 'N/A')}</div>
+            <div><strong style="color:#64748b">Email:</strong> ${escapeHtml(p.email || 'N/A')}</div>
+            <div style="grid-column:1/-1"><strong style="color:#64748b">Dirección:</strong> ${escapeHtml(p.direccion || 'N/A')}</div>
+          </div>
+        </div>
+        
+        <div style="background:#fff;border:2px solid #e2e8f0;padding:20px;border-radius:12px;margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+            <div><strong style="color:#64748b">Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</div>
+            <div><strong style="color:#64748b">Estado:</strong> 
+              <select id="estadoPedido_${id}" style="padding:8px 12px;border-radius:8px;border:2px solid #e2e8f0;font-weight:600">
+                <option value="pendiente" ${p.estado==='pendiente'?'selected':''}>⏳ Pendiente</option>
+                <option value="en_proceso" ${p.estado==='en_proceso'?'selected':''}>🔄 En Proceso</option>
+                <option value="completado" ${p.estado==='completado'?'selected':''}>✅ Completado</option>
+                <option value="cancelado" ${p.estado==='cancelado'?'selected':''}>❌ Cancelado</option>
+              </select>
+            </div>
+          </div>
+          ${p.notas ? `<div style="margin-top:12px"><strong style="color:#64748b">Notas:</strong> ${escapeHtml(p.notas)}</div>` : ''}
+        </div>
+        
+        <h4 style="margin:20px 0 10px 0;color:#333">Detalle de Productos</h4>
+        ${itemsHtml}
+        
+        <div style="display:flex;gap:12px;margin-top:24px;justify-content:flex-end">
+          <button onclick="printProveedorOrder(${id})" class="auth-btn" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%)">🖨️ Imprimir</button>
+          <button onclick="document.getElementById('${modalId}').remove()" class="auth-btn" style="background:#64748b">Cerrar</button>
+        </div>
+      </div>
+    `
+    document.body.appendChild(modal)
+    
+    // Add event listener to estado selector
+    const estadoSelect = document.getElementById(`estadoPedido_${id}`)
+    if (estadoSelect) {
+      estadoSelect.addEventListener('change', async (e) => {
+        const nuevoEstado = e.target.value
+        console.log('Cambiando estado a:', nuevoEstado, 'Tipo:', typeof nuevoEstado) // DEBUG
+        if (!nuevoEstado || nuevoEstado === '') {
+          showMessage('Error: estado vacío', 'error')
+          return
+        }
+        try {
+          const payload = { estado: nuevoEstado }
+          console.log('Enviando payload:', payload) // DEBUG
+          const res = await fetch(`${API_BASE_URL}/pedidos_proveedor/${id}/estado`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+          })
+          const data = await res.json()
+          console.log('Respuesta servidor:', data) // DEBUG
+          if (res.ok) {
+            showMessage('Estado actualizado correctamente', 'success')
+            loadProveedorOrders() // Reload table
+          } else {
+            showMessage(data.error || 'Error actualizando estado', 'error')
+          }
+        } catch (err) {
+          console.error(err)
+          showMessage('Error de red', 'error')
+        }
+      })
+    }
+  }catch(err){ console.error(err); showMessage('Error mostrando pedido','error') }
+}
+
+// Function to print proveedorOrder (called from modal)
+window.printProveedorOrder = async function(id) {
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos_proveedor/${id}`)
+    if (!res.ok) return showMessage('No se pudo obtener pedido','error')
+    const data = await res.json()
+    const p = data.pedido
+    
+    // Calculate total
+    let total = 0
+    if (Array.isArray(p.items) && p.items.length > 0) {
+      total = p.items.reduce((sum, it) => sum + (Number(it.cantidad) * Number(it.precio_unitario || 0)), 0)
+    }
+    
+    let itemsHtml = ''
+    if (Array.isArray(p.items) && p.items.length>0){
+      itemsHtml = '<table style="width:100%;border-collapse:collapse;margin-top:20px;border:2px solid #333"><thead><tr style="background:#f3f4f6"><th style="border:1px solid #666;padding:10px;text-align:left">Producto</th><th style="border:1px solid #666;padding:10px;text-align:center">Cantidad</th><th style="border:1px solid #666;padding:10px;text-align:right">Precio Unit.</th><th style="border:1px solid #666;padding:10px;text-align:right">Subtotal</th></tr></thead><tbody>'
+      p.items.forEach(it=>{ 
+        const subtotal = Number(it.cantidad) * Number(it.precio_unitario || 0)
+        itemsHtml += `<tr><td style="border:1px solid #666;padding:8px">${escapeHtml(it.producto_nombre)}</td><td style="border:1px solid #666;padding:8px;text-align:center">${it.cantidad}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${subtotal.toFixed(2)}</td></tr>` 
+      })
+      itemsHtml += `<tr style="font-weight:bold;background:#f9fafb"><td colspan="3" style="border:1px solid #666;padding:10px;text-align:right">TOTAL:</td><td style="border:1px solid #666;padding:10px;text-align:right">$${total.toFixed(2)}</td></tr>`
+      itemsHtml += '</tbody></table>'
+    }
+    
     const w = window.open('', '_blank')
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pedido proveedor ${p.id}</title></head><body><h2>Pedido #${p.id} - ${escapeHtml(p.proveedor_nombre||'')}</h2><p><strong>Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</p>${itemsHtml}</body></html>`)
+    w.document.write(`<!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Pedido Proveedor ${p.id}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; color: #222; }
+        .header { border: 2px solid #333; padding: 20px; margin-bottom: 20px; background: #f9fafb; }
+        .header h1 { margin: 0 0 10px 0; color: #111; font-size: 24px; }
+        .header h2 { margin: 0 0 15px 0; color: #6366f1; font-size: 20px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .info-label { font-weight: bold; color: #555; min-width: 120px; }
+        .divider { border-top: 2px dashed #999; margin: 15px 0; }
+        @media print {
+          body { padding: 10px; }
+          @page { size: auto; margin: 10mm; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>🏢 Soderia El Negrito</h1>
+        <h2>Pedido a Proveedor #${p.id}</h2>
+        <div class="divider"></div>
+        <div class="info-row">
+          <span class="info-label">Proveedor:</span>
+          <span>${escapeHtml(p.proveedor_nombre || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Contacto:</span>
+          <span>${escapeHtml(p.contacto || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Teléfono:</span>
+          <span>${escapeHtml(p.telefono || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email:</span>
+          <span>${escapeHtml(p.email || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Dirección:</span>
+          <span>${escapeHtml(p.direccion || 'N/A')}</span>
+        </div>
+        <div class="divider"></div>
+        <div class="info-row">
+          <span class="info-label">Fecha del pedido:</span>
+          <span>${new Date(p.fecha).toLocaleString()}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Estado:</span>
+          <span style="color: ${p.estado === 'completado' ? 'green' : 'orange'}; font-weight: bold;">${p.estado || 'pendiente'}</span>
+        </div>
+        ${p.notas ? `<div class="info-row"><span class="info-label">Notas:</span><span>${escapeHtml(p.notas)}</span></div>` : ''}
+      </div>
+      <h3 style="margin-bottom:10px;color:#333">Detalle de Productos</h3>
+      ${itemsHtml}
+    </body>
+    </html>`)
     w.document.close()
     w.print()
   }catch(err){ console.error(err); showMessage('Error mostrando pedido','error') }

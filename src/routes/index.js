@@ -100,25 +100,21 @@ router.get('/productos', async (req, res) => {
 // GET /api/productos_ext -> list products with optional categoria and proveedor info when schema has columns
 router.get('/productos_ext', async (req, res) => {
   try {
-    // Check if columns exist
-    const cols = await query("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'productos' AND column_name IN ('categoria','proveedor_id')");
-    const hasCategoria = cols.some(c => c.column_name === 'categoria')
-    const hasProveedorId = cols.some(c => c.column_name === 'proveedor_id')
-
-    let sql = 'SELECT p.id, p.nombre, p.descripcion, p.precio, p.stock, p.creado_en'
-    if (hasCategoria) sql += ', p.categoria'
-    if (hasProveedorId) sql += ', p.proveedor_id, pr.nombre AS proveedor_nombre'
-    sql += ' FROM productos p'
-    if (hasProveedorId) sql += ' LEFT JOIN proveedores pr ON p.proveedor_id = pr.id'
-    sql += ' ORDER BY p.nombre'
-
-    const products = await query(sql)
-    res.json({ productos: products })
+    // Try to get products with proveedor_id and categoria directly
+    const products = await query(`
+      SELECT p.id, p.nombre, p.descripcion, p.precio, p.stock, p.creado_en, 
+             p.proveedor_id, p.categoria, pr.nombre AS proveedor_nombre
+      FROM productos p
+      LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+      ORDER BY p.nombre
+    `)
+    return res.json({ productos: products })
   } catch (err) {
-    // If information_schema is restricted, fall back
+    console.error('Error en productos_ext:', err)
+    // If columns don't exist, try basic query
     try {
       const products = await query('SELECT id, nombre, descripcion, precio, stock, creado_en FROM productos ORDER BY nombre')
-      return res.json({ productos })
+      return res.json({ productos: products })
     } catch (e){
       return res.status(500).json({ error: err.message })
     }
@@ -164,13 +160,42 @@ router.get('/pedidos_proveedor', async (req, res) => {
 router.get('/pedidos_proveedor/:id', async (req, res) => {
   const { id } = req.params
   try{
-    const rows = await query('SELECT pp.*, pr.nombre AS proveedor_nombre FROM pedidos_proveedor pp LEFT JOIN proveedores pr ON pp.proveedor_id = pr.id WHERE pp.id = ? LIMIT 1', [id])
+    console.log('Buscando pedido ID:', id) // DEBUG
+    const rows = await query('SELECT pp.*, pr.nombre AS proveedor_nombre, pr.contacto, pr.telefono, pr.email, pr.direccion FROM pedidos_proveedor pp LEFT JOIN proveedores pr ON pp.proveedor_id = pr.id WHERE pp.id = ? LIMIT 1', [id])
+    console.log('Resultado query pedidos_proveedor:', rows) // DEBUG
     if (!rows || rows.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' })
     const pedido = rows[0]
+    console.log('Pedido completo:', pedido) // DEBUG
+    console.log('proveedor_id del pedido:', pedido.proveedor_id) // DEBUG
+    console.log('Datos proveedor:', { contacto: pedido.contacto, telefono: pedido.telefono, email: pedido.email, direccion: pedido.direccion }) // DEBUG
     const items = await query('SELECT ppi.id, ppi.producto_id, ppi.cantidad, ppi.precio_unitario, pr.nombre as producto_nombre FROM pedido_proveedor_items ppi JOIN productos pr ON ppi.producto_id = pr.id WHERE ppi.pedido_id = ?', [id])
     pedido.items = items || []
     res.json({ pedido })
-  }catch(err){ res.status(500).json({ error: err.message }) }
+  }catch(err){ 
+    console.error('Error en GET pedido:', err) // DEBUG
+    res.status(500).json({ error: err.message }) 
+  }
+})
+
+// PUT /api/pedidos_proveedor/:id/estado -> actualizar estado del pedido
+router.put('/pedidos_proveedor/:id/estado', async (req, res) => {
+  const { id } = req.params
+  const { estado } = req.body
+  console.log('PUT estado - ID:', id, 'Estado recibido:', estado, 'Tipo:', typeof estado) // DEBUG
+  const estadosValidos = ['pendiente', 'en_proceso', 'completado', 'cancelado']
+  if (!estado || !estadosValidos.includes(estado)) {
+    console.log('Estado inválido o vacío') // DEBUG
+    return res.status(400).json({ error: 'Estado inválido: ' + estado })
+  }
+  try{
+    console.log('Ejecutando UPDATE con estado:', estado) // DEBUG
+    const result = await query('UPDATE pedidos_proveedor SET estado = ?, updated_at = NOW() WHERE id = ?', [estado, id])
+    console.log('Resultado UPDATE:', result) // DEBUG
+    res.json({ message: 'Estado actualizado', estado })
+  }catch(err){ 
+    console.error('Error en UPDATE:', err) // DEBUG
+    res.status(500).json({ error: err.message }) 
+  }
 })
 
 // POST /api/pedidos_proveedor -> crear pedido a proveedor
@@ -181,7 +206,7 @@ router.post('/pedidos_proveedor', async (req, res) => {
   const conn = await pool.promise().getConnection()
   try{
     await conn.beginTransaction()
-    const [hdr] = await conn.query('INSERT INTO pedidos_proveedor (proveedor_id, notas) VALUES (?, ?)', [proveedor_id, notas || ''])
+    const [hdr] = await conn.query('INSERT INTO pedidos_proveedor (proveedor_id, notas, estado) VALUES (?, ?, ?)', [proveedor_id, notas || '', 'pendiente'])
     const pedidoId = hdr.insertId
     for (const it of items){
       await conn.query('INSERT INTO pedido_proveedor_items (pedido_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)', [pedidoId, it.producto_id, it.cantidad, it.precio_unitario || 0])
@@ -192,12 +217,21 @@ router.post('/pedidos_proveedor', async (req, res) => {
 })
 
 // POST /api/productos -> add product
-// body: { nombre, descripcion, precio, stock }
+// body: { nombre, descripcion, precio, stock, proveedor_id }
 router.post('/productos', async (req, res) => {
-  const { nombre, descripcion, precio, stock } = req.body;
+  const { nombre, descripcion, precio, stock, proveedor_id } = req.body;
   if (!nombre || precio == null) return res.status(400).json({ error: 'Faltan datos requeridos' });
   try {
-    const result = await query('INSERT INTO productos (nombre, descripcion, precio, stock) VALUES (?, ?, ?, ?)', [nombre, descripcion || '', precio, stock || 0]);
+    // Check if proveedor_id column exists
+    const cols = await query("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'productos' AND column_name = 'proveedor_id'");
+    const hasProveedorId = cols.length > 0;
+    
+    let result;
+    if (hasProveedorId && proveedor_id) {
+      result = await query('INSERT INTO productos (nombre, descripcion, precio, stock, proveedor_id) VALUES (?, ?, ?, ?, ?)', [nombre, descripcion || '', precio, stock || 0, proveedor_id]);
+    } else {
+      result = await query('INSERT INTO productos (nombre, descripcion, precio, stock) VALUES (?, ?, ?, ?)', [nombre, descripcion || '', precio, stock || 0]);
+    }
     res.status(201).json({ message: 'Producto agregado', id: result.insertId });
   } catch (err) {
     res.status(500).json({ error: err.message });
