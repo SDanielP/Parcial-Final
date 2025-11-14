@@ -23,7 +23,6 @@
                         <div id="ventasSubmenu" style="display:none; position:absolute; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
                             <a href="#" id="newSaleLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Nueva venta</a>
                             <a href="#" id="salesHistoryLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial</a>
-                            <a href="#" id="pedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos</a>
                             <a href="#" id="hojaRutaLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Hoja de ruta</a>
                         </div>
                     </div>
@@ -214,20 +213,12 @@
             </div>
         </section>
 
-        <!-- Pedidos: panel para moderador -> listar e imprimir hoja de ruta -->
-        <section class="dashboard-section" id="pedidosSection" style="display:none;">
-            <div class="dashboard-container">
-                <h1>Pedidos (Envios)</h1>
-                <div class="dashboard-card">
-                    <table id="pedidosTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
-                </div>
-            </div>
-        </section>
+        
 
         <!-- Hoja de ruta: listar ventas pendientes de envío y detalle de productos por venta -->
         <section class="dashboard-section" id="hojaRutaSection" style="display:none;">
             <div class="dashboard-container">
-                <h1>Hoja de ruta - Ventas con envío pendientes</h1>
+                <h1>Hoja de ruta</h1>
                 <div class="dashboard-card">
                     <table id="hojaRutaTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID Venta</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>

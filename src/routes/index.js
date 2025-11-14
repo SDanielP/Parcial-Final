@@ -323,7 +323,7 @@ router.get('/hoja_ruta', async (req, res) => {
 router.get('/pedidos/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const rows = await query(`SELECT p.*, c.id AS cliente_id, c.nombre AS cliente_nombre, c.telefono, v.total
+    const rows = await query(`SELECT p.*, c.id AS cliente_id, c.nombre AS cliente_nombre, c.telefono, c.email, c.direccion, v.total
       FROM pedidos p
       LEFT JOIN clientes c ON p.cliente_id = c.id
       LEFT JOIN ventas v ON p.venta_id = v.id
@@ -331,11 +331,44 @@ router.get('/pedidos/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
     const pedido = rows[0]
     pedido.fecha = pedido.fecha || pedido.fecha_pedido || null
+    
+    // Obtener productos del pedido a través de la venta
+    if (pedido.venta_id) {
+      const productos = await query(`SELECT dv.cantidad, dv.precio_unitario, pr.nombre as producto_nombre
+        FROM detalle_venta dv
+        JOIN productos pr ON dv.producto_id = pr.id
+        WHERE dv.venta_id = ?`, [pedido.venta_id])
+      pedido.productos = productos || []
+    } else {
+      pedido.productos = []
+    }
+    
     res.json({ pedido });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// PUT /api/pedidos/:id/estado -> actualizar estado del pedido de cliente
+router.put('/pedidos/:id/estado', async (req, res) => {
+  const { id } = req.params
+  const { estado } = req.body
+  console.log('PUT estado pedido cliente - ID:', id, 'Estado recibido:', estado) // DEBUG
+  const estadosValidos = ['pendiente', 'enviado', 'entregado']
+  if (!estado || !estadosValidos.includes(estado)) {
+    console.log('Estado inválido o vacío') // DEBUG
+    return res.status(400).json({ error: 'Estado inválido: ' + estado })
+  }
+  try{
+    console.log('Ejecutando UPDATE pedido con estado:', estado) // DEBUG
+    const result = await query('UPDATE pedidos SET estado = ? WHERE id = ?', [estado, id])
+    console.log('Resultado UPDATE pedido:', result) // DEBUG
+    res.json({ message: 'Estado actualizado', estado })
+  }catch(err){ 
+    console.error('Error en UPDATE pedido:', err) // DEBUG
+    res.status(500).json({ error: err.message }) 
+  }
+})
 
 // PUT /api/productos/:id -> update product
 router.put('/productos/:id', async (req, res) => {
