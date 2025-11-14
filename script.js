@@ -20,6 +20,7 @@ const refs = {
   loginSection: document.getElementById('loginSection'),
   registerSection: document.getElementById('registerSection'),
   dashboardSection: document.getElementById('dashboardSection'),
+  pendingSection: document.getElementById('pendingSection'),
   loginForm: document.getElementById('loginForm'),
   registerForm: document.getElementById('registerForm'),
   messageDiv: document.getElementById('message'),
@@ -76,6 +77,14 @@ function init() {
   updateCajaMenuState()
 }
 
+// Helpers for local date handling (avoid UTC off-by-one)
+function localDateYYYYMMDD(d = new Date()){
+  const y = d.getFullYear()
+  const m = String(d.getMonth()+1).padStart(2,'0')
+  const day = String(d.getDate()).padStart(2,'0')
+  return `${y}-${m}-${day}`
+}
+
 function attachListeners(){
   refs.loginBtn?.addEventListener('click', showLogin)
   refs.registerBtn?.addEventListener('click', showRegister)
@@ -88,10 +97,10 @@ function attachListeners(){
     document.getElementById('salesHistoryLink')?.addEventListener('click', (e)=>{
     e.preventDefault()
     showSection(refs.salesHistorySection)
-    // Establecer la fecha actual en el input
+    // Establecer la fecha actual en el input (modo local)
     const dateInput = document.getElementById('salesDate')
     if (dateInput) {
-      const today = new Date().toISOString().slice(0,10)
+      const today = localDateYYYYMMDD()
       dateInput.value = today
       loadSales(today)
     } else {
@@ -276,7 +285,7 @@ function closeAllModals(){
 function hideAllSections(){
   // Hide known sections
   closeAllModals() // Close any open modals when changing sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection']
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded() } }
@@ -287,7 +296,7 @@ async function prepareCajaSection(){
   const ultima = await getUltimaCaja()
   // Apertura: min date = today
   const openFecha = document.getElementById('openFecha')
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDateYYYYMMDD()
   if (openFecha) { openFecha.min = today; openFecha.value = today }
   // show saldo previo = diferencia entre cierre y neto de movimientos de la caja anterior
   const saldoPrevio = document.getElementById('openSaldoPrevio')
@@ -332,7 +341,18 @@ async function prepareCajaSection(){
 function showWelcome(){ hideAllSections(); refs.welcomeSection && (refs.welcomeSection.style.display='block'); updateNav() }
 function showLogin(){ hideAllSections(); refs.loginSection && (refs.loginSection.style.display='block'); updateNav('login') }
 function showRegister(){ hideAllSections(); refs.registerSection && (refs.registerSection.style.display='block'); updateNav('register') }
-function showDashboard(){ hideAllSections(); refs.dashboardSection && (refs.dashboardSection.style.display='block'); updateNav(); showUserMenu(); if (currentUser) refs.userWelcome && (refs.userWelcome.textContent = `Selecciona para comenzar tus actividades, ${currentUser.nombre || currentUser.usuario}`) }
+function showDashboard(){
+  hideAllSections()
+  if (currentUser && currentUser.rol === 'pendiente'){
+    if (refs.pendingSection) refs.pendingSection.style.display='block'
+    updateNav()
+    showUserMenu()
+    showMessage('Tu cuenta está pendiente de activación por un administrador','info')
+    return
+  }
+  refs.dashboardSection && (refs.dashboardSection.style.display='block')
+  updateNav(); showUserMenu(); if (currentUser) refs.userWelcome && (refs.userWelcome.textContent = `Selecciona para comenzar tus actividades, ${currentUser.nombre || currentUser.usuario}`)
+}
 
 function updateNav(active){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'))
@@ -343,6 +363,10 @@ function updateNav(active){
     // Default: hide everything then selectively show per role
     if (refs.mainMenu) refs.mainMenu.style.display = 'none'
     if (refs.adminMenu) refs.adminMenu.style.display = 'none'
+    // Hide individual menu buttons by default
+    if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'none'
+    if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'none'
+    if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'none'
 
     // Role-specific visibility
     if (currentUser.rol === 'admin'){
@@ -361,6 +385,10 @@ function updateNav(active){
       if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
       if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
       if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'none'
+    } else if (currentUser.rol === 'pendiente'){
+      // Pending users see no menus
+      if (refs.mainMenu) refs.mainMenu.style.display = 'none'
+      if (refs.adminMenu) refs.adminMenu.style.display = 'none'
     } else {
       // default: show main menu
       if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
@@ -645,7 +673,13 @@ async function handleLogin(e){
         localStorage.setItem('userData', JSON.stringify(currentUser))
         showMessage('Login exitoso','success')
         // After login, route user according to role
-        if (currentUser.rol === 'admin'){
+        if (currentUser.rol === 'pendiente'){
+          updateNav();
+          // Show pending screen only
+          hideAllSections();
+          if (refs.pendingSection) refs.pendingSection.style.display = 'block'
+          showMessage('Tu cuenta está pendiente de activación por un administrador','info')
+        } else if (currentUser.rol === 'admin'){
           // show only admin users UI
           showSection(document.getElementById('manageUsersSection'))
           updateNav()
@@ -1779,7 +1813,8 @@ async function loadSales(date = null){
     let salesToShow = sales
     if (date) {
       salesToShow = sales.filter(sale => {
-        const saleDate = new Date(sale.fecha).toISOString().split('T')[0]
+        const d = new Date(sale.fecha)
+        const saleDate = localDateYYYYMMDD(d)
         return saleDate === date
       })
     }
