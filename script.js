@@ -1,3 +1,4 @@
+
 // Clean single-file frontend script for Negocio admin system
 
 const API_BASE_URL = 'http://localhost:3000/api'
@@ -19,6 +20,7 @@ const refs = {
   loginSection: document.getElementById('loginSection'),
   registerSection: document.getElementById('registerSection'),
   dashboardSection: document.getElementById('dashboardSection'),
+  pendingSection: document.getElementById('pendingSection'),
   loginForm: document.getElementById('loginForm'),
   registerForm: document.getElementById('registerForm'),
   messageDiv: document.getElementById('message'),
@@ -75,6 +77,14 @@ function init() {
   updateCajaMenuState()
 }
 
+// Helpers for local date handling (avoid UTC off-by-one)
+function localDateYYYYMMDD(d = new Date()){
+  const y = d.getFullYear()
+  const m = String(d.getMonth()+1).padStart(2,'0')
+  const day = String(d.getDate()).padStart(2,'0')
+  return `${y}-${m}-${day}`
+}
+
 function attachListeners(){
   refs.loginBtn?.addEventListener('click', showLogin)
   refs.registerBtn?.addEventListener('click', showRegister)
@@ -87,10 +97,10 @@ function attachListeners(){
     document.getElementById('salesHistoryLink')?.addEventListener('click', (e)=>{
     e.preventDefault()
     showSection(refs.salesHistorySection)
-    // Establecer la fecha actual en el input
+    // Establecer la fecha actual en el input (modo local)
     const dateInput = document.getElementById('salesDate')
     if (dateInput) {
-      const today = new Date().toISOString().slice(0,10)
+      const today = localDateYYYYMMDD()
       dateInput.value = today
       loadSales(today)
     } else {
@@ -100,7 +110,7 @@ function attachListeners(){
   document.getElementById('productsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.productsSection); loadProducts() })
   document.getElementById('pedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('pedidosSection')); loadPedidos() })
   document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('hojaRutaSection')); loadHojaRuta() })
-  document.getElementById('addProductLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.addProductSection) })
+  document.getElementById('addProductLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); showSection(refs.addProductSection); await loadProveedoresInAddProductForm() })
   document.getElementById('stockReportsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); generateLowStockReport() })
   document.getElementById('stockPedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('stockPedidosSection')); openStockPedidos() })
   // Caja submenu links -> show specific internal panels
@@ -263,9 +273,19 @@ function closeAllSubmenus(){
   if (refs.adminSubmenu) refs.adminSubmenu.style.display = 'none'
 }
 
+function closeAllModals(){
+  // Close all modals (pedido proveedor, cliente modal, etc)
+  console.log('Cerrando modales, encontrados:', document.querySelectorAll('.modal').length)
+  document.querySelectorAll('.modal').forEach(modal => {
+    console.log('Removiendo modal:', modal.id)
+    modal.remove()
+  })
+}
+
 function hideAllSections(){
   // Hide known sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection']
+  closeAllModals() // Close any open modals when changing sections
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded() } }
@@ -276,7 +296,7 @@ async function prepareCajaSection(){
   const ultima = await getUltimaCaja()
   // Apertura: min date = today
   const openFecha = document.getElementById('openFecha')
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDateYYYYMMDD()
   if (openFecha) { openFecha.min = today; openFecha.value = today }
   // show saldo previo = diferencia entre cierre y neto de movimientos de la caja anterior
   const saldoPrevio = document.getElementById('openSaldoPrevio')
@@ -321,7 +341,18 @@ async function prepareCajaSection(){
 function showWelcome(){ hideAllSections(); refs.welcomeSection && (refs.welcomeSection.style.display='block'); updateNav() }
 function showLogin(){ hideAllSections(); refs.loginSection && (refs.loginSection.style.display='block'); updateNav('login') }
 function showRegister(){ hideAllSections(); refs.registerSection && (refs.registerSection.style.display='block'); updateNav('register') }
-function showDashboard(){ hideAllSections(); refs.dashboardSection && (refs.dashboardSection.style.display='block'); updateNav(); showUserMenu(); if (currentUser) refs.userWelcome && (refs.userWelcome.textContent = `Selecciona para comenzar tus actividades, ${currentUser.nombre || currentUser.usuario}`) }
+function showDashboard(){
+  hideAllSections()
+  if (currentUser && currentUser.rol === 'pendiente'){
+    if (refs.pendingSection) refs.pendingSection.style.display='block'
+    updateNav()
+    showUserMenu()
+    showMessage('Tu cuenta está pendiente de activación por un administrador','info')
+    return
+  }
+  refs.dashboardSection && (refs.dashboardSection.style.display='block')
+  updateNav(); showUserMenu(); if (currentUser) refs.userWelcome && (refs.userWelcome.textContent = `Selecciona para comenzar tus actividades, ${currentUser.nombre || currentUser.usuario}`)
+}
 
 function updateNav(active){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'))
@@ -332,6 +363,10 @@ function updateNav(active){
     // Default: hide everything then selectively show per role
     if (refs.mainMenu) refs.mainMenu.style.display = 'none'
     if (refs.adminMenu) refs.adminMenu.style.display = 'none'
+    // Hide individual menu buttons by default
+    if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'none'
+    if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'none'
+    if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'none'
 
     // Role-specific visibility
     if (currentUser.rol === 'admin'){
@@ -350,6 +385,10 @@ function updateNav(active){
       if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
       if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
       if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'none'
+    } else if (currentUser.rol === 'pendiente'){
+      // Pending users see no menus
+      if (refs.mainMenu) refs.mainMenu.style.display = 'none'
+      if (refs.adminMenu) refs.adminMenu.style.display = 'none'
     } else {
       // default: show main menu
       if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
@@ -634,7 +673,13 @@ async function handleLogin(e){
         localStorage.setItem('userData', JSON.stringify(currentUser))
         showMessage('Login exitoso','success')
         // After login, route user according to role
-        if (currentUser.rol === 'admin'){
+        if (currentUser.rol === 'pendiente'){
+          updateNav();
+          // Show pending screen only
+          hideAllSections();
+          if (refs.pendingSection) refs.pendingSection.style.display = 'block'
+          showMessage('Tu cuenta está pendiente de activación por un administrador','info')
+        } else if (currentUser.rol === 'admin'){
           // show only admin users UI
           showSection(document.getElementById('manageUsersSection'))
           updateNav()
@@ -682,6 +727,7 @@ function logout(){
   currentUser = null
   // Close any open submenus and sections to avoid residual UI after logout
   closeAllSubmenus()
+  closeAllModals()
   hideAllSections()
   updateNav()
   showWelcome()
@@ -691,7 +737,8 @@ function logout(){
 // Products
 async function loadProducts(){
   try{
-    const res = await fetch(`${API_BASE_URL}/productos`)
+    // Use productos_ext to get proveedor_id field for filtering
+    const res = await fetch(`${API_BASE_URL}/productos_ext`)
     const data = await res.json()
     productsCache = data.productos || []
     if (!refs.productsTable) return
@@ -759,7 +806,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 async function handleAddProduct(e){
   e.preventDefault()
   const fd = new FormData(refs.addProductForm)
-  const payload = { nombre: fd.get('nombre'), descripcion: fd.get('descripcion'), precio: Number(fd.get('precio')), stock: Number(fd.get('stock')) }
+  const proveedorId = fd.get('proveedor_id')
+  const payload = { 
+    nombre: fd.get('nombre'), 
+    descripcion: fd.get('descripcion'), 
+    precio: Number(fd.get('precio')), 
+    stock: Number(fd.get('stock')),
+    proveedor_id: proveedorId && proveedorId !== '' ? Number(proveedorId) : null
+  }
   try{
     const res = await fetch(`${API_BASE_URL}/productos`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
@@ -800,6 +854,12 @@ async function handleNewSale(e){
   // verify caja abierta
   const caja = await getCajaActual()
   if (!caja) return showMessage('No hay caja abierta. Abre la caja antes de registrar ventas.','error')
+  
+  // Obtener tipo de pago
+  const tipoPagoSelect = document.getElementById('tipoPago')
+  const tipo_pago = tipoPagoSelect ? tipoPagoSelect.value : 'efectivo'
+  if (!tipo_pago) return showMessage('Selecciona un tipo de pago','error')
+  
   const rows = [...refs.saleProductsContainer.querySelectorAll('.sale-item')]
   if (rows.length === 0) return showMessage('Agrega al menos un producto','error')
   let valid = true;
@@ -839,7 +899,8 @@ async function handleNewSale(e){
       }
     }
   }
-  const payload = { usuario_id: currentUser.id, items, envio }
+  const payload = { usuario_id: currentUser.id, items, tipo_pago, envio }
+  console.log('Payload venta:', payload) // DEBUG
   try{
     const res = await fetch(`${API_BASE_URL}/ventas`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
@@ -1012,10 +1073,10 @@ async function loadPedidos(){
         <td>${p.direccion}</td>
         <td style="text-align:right;">$${Number(p.total||0).toFixed(2)}</td>
         <td>${p.estado}</td>
-        <td><button class="auth-btn" data-id="${p.id}">Imprimir</button></td>
+        <td><button class="auth-btn" data-id="${p.id}">Ver/Imprimir</button></td>
       `
       tbody.appendChild(tr)
-      tr.querySelector('button')?.addEventListener('click', ()=>{ printPedido(p.id) })
+      tr.querySelector('button')?.addEventListener('click', ()=>{ viewPedidoDetail(p.id) })
     })
   }catch(err){ console.error(err); showMessage('Error cargando pedidos','error') }
 }
@@ -1030,6 +1091,19 @@ async function loadProveedores(){
   }catch(err){ console.error('Error cargando proveedores', err); return [] }
 }
 
+async function loadProveedoresInAddProductForm(){
+  const select = document.getElementById('addProductProveedorSelect')
+  if (!select) return
+  const proveedores = await loadProveedores()
+  select.innerHTML = '<option value="">-- Seleccionar proveedor (opcional) --</option>'
+  proveedores.forEach(p => {
+    const opt = document.createElement('option')
+    opt.value = p.id
+    opt.textContent = p.nombre
+    select.appendChild(opt)
+  })
+}
+
 async function openStockPedidos(){
   // Ensure products and providers loaded
   ensureProductsLoaded()
@@ -1038,6 +1112,13 @@ async function openStockPedidos(){
   if (sel){
     sel.innerHTML = '<option value="">-- Seleccionar proveedor --</option>'
     proveedores.forEach(p=>{ const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.nombre; sel.appendChild(opt) })
+    // Add listener to filter products when provider changes
+    sel.addEventListener('change', ()=>{ 
+      renderStockPedidoSearch()
+      // Clear cart when changing provider
+      window.stockPedidoCart = []
+      renderStockPedidoCart()
+    })
   }
   // attach search button
   document.getElementById('stockPedidoSearchBtn')?.addEventListener('click', ()=>{ renderStockPedidoSearch() })
@@ -1051,11 +1132,26 @@ async function openStockPedidos(){
 
 function renderStockPedidoSearch(){
   const q = (document.getElementById('stockPedidoProductSearch')?.value||'').trim().toLowerCase()
+  const proveedorId = Number(document.getElementById('proveedorFilter')?.value||0)
   const results = document.getElementById('stockPedidoResults')
   if (!results) return
   results.innerHTML = ''
-  const matches = q ? productsCache.filter(p=>p.nombre.toLowerCase().includes(q)) : productsCache.slice(0,50)
+  
+  // First filter by provider if selected
+  let filteredProducts = productsCache
+  if (proveedorId > 0) {
+    // Show ONLY products assigned to this provider (strict filter)
+    filteredProducts = productsCache.filter(p => Number(p.proveedor_id) === proveedorId)
+    if (filteredProducts.length === 0) {
+      results.innerHTML = '<div style="padding:8px;color:#64748b">No hay productos asociados a este proveedor. Por favor asigna productos a este proveedor desde el módulo de Stock > Productos.</div>'
+      return
+    }
+  }
+  
+  // Then filter by search query
+  const matches = q ? filteredProducts.filter(p=>p.nombre.toLowerCase().includes(q)) : filteredProducts.slice(0,50)
   if (!matches || matches.length===0) { results.innerHTML = '<div style="padding:8px;color:#64748b">No se encontraron productos</div>'; return }
+  
   matches.forEach(p=>{
     const div = document.createElement('div')
     div.style.display = 'flex'
@@ -1138,14 +1234,195 @@ async function viewProveedorOrder(id){
     if (!res.ok) return showMessage('No se pudo obtener pedido','error')
     const data = await res.json()
     const p = data.pedido
+    
+    // Create modal for viewing and managing order
+    const modalId = 'proveedorOrderModal_' + id
+    let existingModal = document.getElementById(modalId)
+    if (existingModal) existingModal.remove()
+    
+    // Calculate total
+    let total = 0
+    if (Array.isArray(p.items) && p.items.length > 0) {
+      total = p.items.reduce((sum, it) => sum + (Number(it.cantidad) * Number(it.precio_unitario || 0)), 0)
+    }
+    
     let itemsHtml = ''
     if (Array.isArray(p.items) && p.items.length>0){
-      itemsHtml = '<table style="width:100%;border-collapse:collapse"><thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr></thead><tbody>'
-      p.items.forEach(it=>{ itemsHtml += `<tr><td>${escapeHtml(it.producto_nombre)}</td><td style="text-align:right">${it.cantidad}</td><td style="text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td></tr>` })
+      itemsHtml = '<table style="width:100%;border-collapse:collapse;margin-top:20px;border:2px solid #333"><thead><tr style="background:#f3f4f6"><th style="border:1px solid #666;padding:10px;text-align:left">Producto</th><th style="border:1px solid #666;padding:10px;text-align:center">Cantidad</th><th style="border:1px solid #666;padding:10px;text-align:right">Precio Unit.</th><th style="border:1px solid #666;padding:10px;text-align:right">Subtotal</th></tr></thead><tbody>'
+      p.items.forEach(it=>{ 
+        const subtotal = Number(it.cantidad) * Number(it.precio_unitario || 0)
+        itemsHtml += `<tr><td style="border:1px solid #666;padding:8px">${escapeHtml(it.producto_nombre)}</td><td style="border:1px solid #666;padding:8px;text-align:center">${it.cantidad}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${subtotal.toFixed(2)}</td></tr>` 
+      })
+      itemsHtml += `<tr style="font-weight:bold;background:#f9fafb"><td colspan="3" style="border:1px solid #666;padding:10px;text-align:right">TOTAL:</td><td style="border:1px solid #666;padding:10px;text-align:right">$${total.toFixed(2)}</td></tr>`
       itemsHtml += '</tbody></table>'
     }
+    
+    const modal = document.createElement('div')
+    modal.id = modalId
+    modal.className = 'modal'
+    modal.style.display = 'flex'
+    modal.innerHTML = `
+      <div class="modal-overlay" onclick="document.getElementById('${modalId}').remove()"></div>
+      <div class="modal-content" style="max-width:900px;max-height:90vh;overflow-y:auto">
+        <h3 style="margin-bottom:20px;color:#6366f1">📋 Pedido a Proveedor #${p.id}</h3>
+        
+        <div style="background:#f9fafb;border:2px solid #e2e8f0;padding:20px;border-radius:12px;margin-bottom:20px">
+          <h4 style="margin:0 0 15px 0;color:#111;font-size:18px">📦 Datos del Proveedor</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><strong style="color:#64748b">Nombre:</strong> ${escapeHtml(p.proveedor_nombre || 'N/A')}</div>
+            <div><strong style="color:#64748b">Contacto:</strong> ${escapeHtml(p.contacto || 'N/A')}</div>
+            <div><strong style="color:#64748b">Teléfono:</strong> ${escapeHtml(p.telefono || 'N/A')}</div>
+            <div><strong style="color:#64748b">Email:</strong> ${escapeHtml(p.email || 'N/A')}</div>
+            <div style="grid-column:1/-1"><strong style="color:#64748b">Dirección:</strong> ${escapeHtml(p.direccion || 'N/A')}</div>
+          </div>
+        </div>
+        
+        <div style="background:#fff;border:2px solid #e2e8f0;padding:20px;border-radius:12px;margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+            <div><strong style="color:#64748b">Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</div>
+            <div><strong style="color:#64748b">Estado:</strong> 
+              <select id="estadoPedido_${id}" style="padding:8px 12px;border-radius:8px;border:2px solid #e2e8f0;font-weight:600">
+                <option value="pendiente" ${p.estado==='pendiente'?'selected':''}>⏳ Pendiente</option>
+                <option value="en_proceso" ${p.estado==='en_proceso'?'selected':''}>🔄 En Proceso</option>
+                <option value="completado" ${p.estado==='completado'?'selected':''}>✅ Completado</option>
+                <option value="cancelado" ${p.estado==='cancelado'?'selected':''}>❌ Cancelado</option>
+              </select>
+            </div>
+          </div>
+          ${p.notas ? `<div style="margin-top:12px"><strong style="color:#64748b">Notas:</strong> ${escapeHtml(p.notas)}</div>` : ''}
+        </div>
+        
+        <h4 style="margin:20px 0 10px 0;color:#333">Detalle de Productos</h4>
+        ${itemsHtml}
+        
+        <div style="display:flex;gap:12px;margin-top:24px;justify-content:flex-end">
+          <button onclick="printProveedorOrder(${id})" class="auth-btn" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%)">🖨️ Imprimir</button>
+          <button onclick="document.getElementById('${modalId}').remove()" class="auth-btn" style="background:#64748b">Cerrar</button>
+        </div>
+      </div>
+    `
+    document.body.appendChild(modal)
+    
+    // Add event listener to estado selector
+    const estadoSelect = document.getElementById(`estadoPedido_${id}`)
+    if (estadoSelect) {
+      estadoSelect.addEventListener('change', async (e) => {
+        const nuevoEstado = e.target.value
+        console.log('Cambiando estado a:', nuevoEstado, 'Tipo:', typeof nuevoEstado) // DEBUG
+        if (!nuevoEstado || nuevoEstado === '') {
+          showMessage('Error: estado vacío', 'error')
+          return
+        }
+        try {
+          const payload = { estado: nuevoEstado }
+          console.log('Enviando payload:', payload) // DEBUG
+          const res = await fetch(`${API_BASE_URL}/pedidos_proveedor/${id}/estado`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+          })
+          const data = await res.json()
+          console.log('Respuesta servidor:', data) // DEBUG
+          if (res.ok) {
+            showMessage('Estado actualizado correctamente', 'success')
+            loadProveedorOrders() // Reload table
+          } else {
+            showMessage(data.error || 'Error actualizando estado', 'error')
+          }
+        } catch (err) {
+          console.error(err)
+          showMessage('Error de red', 'error')
+        }
+      })
+    }
+  }catch(err){ console.error(err); showMessage('Error mostrando pedido','error') }
+}
+
+// Function to print proveedorOrder (called from modal)
+window.printProveedorOrder = async function(id) {
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos_proveedor/${id}`)
+    if (!res.ok) return showMessage('No se pudo obtener pedido','error')
+    const data = await res.json()
+    const p = data.pedido
+    
+    // Calculate total
+    let total = 0
+    if (Array.isArray(p.items) && p.items.length > 0) {
+      total = p.items.reduce((sum, it) => sum + (Number(it.cantidad) * Number(it.precio_unitario || 0)), 0)
+    }
+    
+    let itemsHtml = ''
+    if (Array.isArray(p.items) && p.items.length>0){
+      itemsHtml = '<table style="width:100%;border-collapse:collapse;margin-top:20px;border:2px solid #333"><thead><tr style="background:#f3f4f6"><th style="border:1px solid #666;padding:10px;text-align:left">Producto</th><th style="border:1px solid #666;padding:10px;text-align:center">Cantidad</th><th style="border:1px solid #666;padding:10px;text-align:right">Precio Unit.</th><th style="border:1px solid #666;padding:10px;text-align:right">Subtotal</th></tr></thead><tbody>'
+      p.items.forEach(it=>{ 
+        const subtotal = Number(it.cantidad) * Number(it.precio_unitario || 0)
+        itemsHtml += `<tr><td style="border:1px solid #666;padding:8px">${escapeHtml(it.producto_nombre)}</td><td style="border:1px solid #666;padding:8px;text-align:center">${it.cantidad}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${Number(it.precio_unitario||0).toFixed(2)}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${subtotal.toFixed(2)}</td></tr>` 
+      })
+      itemsHtml += `<tr style="font-weight:bold;background:#f9fafb"><td colspan="3" style="border:1px solid #666;padding:10px;text-align:right">TOTAL:</td><td style="border:1px solid #666;padding:10px;text-align:right">$${total.toFixed(2)}</td></tr>`
+      itemsHtml += '</tbody></table>'
+    }
+    
     const w = window.open('', '_blank')
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pedido proveedor ${p.id}</title></head><body><h2>Pedido #${p.id} - ${escapeHtml(p.proveedor_nombre||'')}</h2><p><strong>Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</p>${itemsHtml}</body></html>`)
+    w.document.write(`<!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Pedido Proveedor ${p.id}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; color: #222; }
+        .header { border: 2px solid #333; padding: 20px; margin-bottom: 20px; background: #f9fafb; }
+        .header h1 { margin: 0 0 10px 0; color: #111; font-size: 24px; }
+        .header h2 { margin: 0 0 15px 0; color: #6366f1; font-size: 20px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .info-label { font-weight: bold; color: #555; min-width: 120px; }
+        .divider { border-top: 2px dashed #999; margin: 15px 0; }
+        @media print {
+          body { padding: 10px; }
+          @page { size: auto; margin: 10mm; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>🏢 Soderia El Negrito</h1>
+        <h2>Pedido a Proveedor #${p.id}</h2>
+        <div class="divider"></div>
+        <div class="info-row">
+          <span class="info-label">Proveedor:</span>
+          <span>${escapeHtml(p.proveedor_nombre || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Contacto:</span>
+          <span>${escapeHtml(p.contacto || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Teléfono:</span>
+          <span>${escapeHtml(p.telefono || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email:</span>
+          <span>${escapeHtml(p.email || 'N/A')}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Dirección:</span>
+          <span>${escapeHtml(p.direccion || 'N/A')}</span>
+        </div>
+        <div class="divider"></div>
+        <div class="info-row">
+          <span class="info-label">Fecha del pedido:</span>
+          <span>${new Date(p.fecha).toLocaleString()}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Estado:</span>
+          <span style="color: ${p.estado === 'completado' ? 'green' : 'orange'}; font-weight: bold;">${p.estado || 'pendiente'}</span>
+        </div>
+        ${p.notas ? `<div class="info-row"><span class="info-label">Notas:</span><span>${escapeHtml(p.notas)}</span></div>` : ''}
+      </div>
+      <h3 style="margin-bottom:10px;color:#333">Detalle de Productos</h3>
+      ${itemsHtml}
+    </body>
+    </html>`)
     w.document.close()
     w.print()
   }catch(err){ console.error(err); showMessage('Error mostrando pedido','error') }
@@ -1174,6 +1451,7 @@ async function loadHojaRuta(){
     if (!tbody) return
     tbody.innerHTML = ''
     rows.forEach(r => {
+      const pedidoId = r.id // id del pedido
       const tr = document.createElement('tr')
       tr.innerHTML = `
         <td>${r.venta_id}</td>
@@ -1181,11 +1459,43 @@ async function loadHojaRuta(){
         <td>${escapeHtml(r.cliente_nombre)} ${r.telefono?('('+escapeHtml(r.telefono)+')'):''}</td>
         <td>${escapeHtml(r.direccion||'')}</td>
         <td style="text-align:right;">$${Number(r.total||0).toFixed(2)}</td>
-        <td>${r.estado||'pendiente'}</td>
-        <td><button class="auth-btn" data-pedido-id="${r.pedido_id}">Imprimir</button></td>
+        <td>
+          <select id="estadoHoja_${pedidoId}" style="padding:6px 10px;border-radius:8px;border:1px solid #e5e7eb;">
+            <option value="pendiente" ${r.estado==='pendiente'||!r.estado?'selected':''}>⏳ Pendiente</option>
+            <option value="enviado" ${r.estado==='enviado'?'selected':''}>🚚 Enviado</option>
+            <option value="entregado" ${r.estado==='entregado'?'selected':''}>✅ Entregado</option>
+          </select>
+        </td>
+        <td>
+          <button class="auth-btn" data-pedido-id="${pedidoId}">Imprimir</button>
+        </td>
       `
       tbody.appendChild(tr)
+      // imprimir
       tr.querySelector('button')?.addEventListener('click', ()=>{ printHojaRuta(r) })
+      // actualizar estado
+      const sel = tr.querySelector(`#estadoHoja_${pedidoId}`)
+      if (sel){
+        sel.addEventListener('change', async (e)=>{
+          const nuevo = e.target.value
+          try{
+            const resp = await fetch(`${API_BASE_URL}/pedidos/${pedidoId}/estado`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado: nuevo }) })
+            const js = await resp.json().catch(()=>({}))
+            if (!resp.ok){
+              showMessage(js.error || 'No se pudo actualizar estado','error')
+              // revert UI
+              e.target.value = r.estado || 'pendiente'
+            } else {
+              r.estado = nuevo
+              showMessage('Estado actualizado','success')
+            }
+          }catch(err){
+            console.error('PUT estado hoja ruta', err)
+            showMessage('Error de red actualizando estado','error')
+            e.target.value = r.estado || 'pendiente'
+          }
+        })
+      }
     })
   }catch(err){ console.error(err); showMessage('Error cargando hoja de ruta','error') }
 }
@@ -1268,40 +1578,87 @@ async function printPedido(id){
     if (!res.ok) return showMessage('No se pudo obtener pedido','error')
     const data = await res.json()
     const p = data.pedido
+    
+    // Construir tabla de productos si existen
+    let productosHtml = ''
+    if (Array.isArray(p.productos) && p.productos.length > 0) {
+      productosHtml = '<table style="width:100%;border-collapse:collapse;margin-top:20px;border:2px solid #333"><thead><tr style="background:#f3f4f6"><th style="border:1px solid #666;padding:10px;text-align:left">Producto</th><th style="border:1px solid #666;padding:10px;text-align:center">Cantidad</th><th style="border:1px solid #666;padding:10px;text-align:right">Precio Unit.</th><th style="border:1px solid #666;padding:10px;text-align:right">Subtotal</th></tr></thead><tbody>'
+      p.productos.forEach(prod => {
+        const subtotal = Number(prod.cantidad) * Number(prod.precio_unitario || 0)
+        productosHtml += `<tr><td style="border:1px solid #666;padding:8px">${escapeHtml(prod.producto_nombre)}</td><td style="border:1px solid #666;padding:8px;text-align:center">${prod.cantidad}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${Number(prod.precio_unitario||0).toFixed(2)}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${subtotal.toFixed(2)}</td></tr>`
+      })
+      productosHtml += `<tr style="font-weight:bold;background:#f9fafb"><td colspan="3" style="border:1px solid #666;padding:10px;text-align:right">TOTAL:</td><td style="border:1px solid #666;padding:10px;text-align:right">$${Number(p.total||0).toFixed(2)}</td></tr>`
+      productosHtml += '</tbody></table>'
+    }
+    
     const w = window.open('', '_blank')
     const html = `<!doctype html>
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Hoja de ruta - Pedido ${p.id}</title>
+          <title>Pedido Cliente #${p.id}</title>
           <style>
-            body{font-family: Arial, Helvetica, sans-serif; color:#222; margin:0; padding:20px}
-            .invoice{max-width:700px;margin:0 auto;border:1px solid #000;padding:18px}
-            .inv-header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:14px}
-            .company{font-size:17px;font-weight:700}
-            .meta{font-size:0.95rem;text-align:right}
-            table.info, table.info td{border:none}
-            .right{text-align:right}
-            hr.sep{border:none;border-top:1px dashed #999;margin:14px 0}
-            @media print{ body{padding:0} .invoice{ -webkit-print-color-adjust: exact; print-color-adjust: exact; margin:0 auto; } @page { size: auto; margin: 12mm; } }
+            body { font-family: Arial, sans-serif; padding: 20px; color: #222; }
+            .header { border: 2px solid #333; padding: 20px; margin-bottom: 20px; background: #f9fafb; }
+            .header h1 { margin: 0 0 10px 0; color: #111; font-size: 24px; }
+            .header h2 { margin: 0 0 15px 0; color: #6366f1; font-size: 20px; }
+            .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+            .info-label { font-weight: bold; color: #555; min-width: 120px; }
+            .divider { border-top: 2px dashed #999; margin: 15px 0; }
+            .footer { margin-top: 30px; padding-top: 15px; border-top: 2px solid #e2e8f0; font-size: 0.9rem; color: #64748b; }
+            .signature { margin-top: 40px; display: flex; justify-content: space-around; }
+            .signature-box { text-align: center; }
+            .signature-line { border-top: 2px solid #333; width: 200px; margin-top: 50px; }
+            @media print {
+              body { padding: 10px; }
+              @page { size: auto; margin: 10mm; }
+            }
           </style>
         </head>
         <body>
-          <div class="invoice">
-            <div class="inv-header">
-              <div class="company">Soderia El Negrito<br><small style="font-weight:400">Remito / Pedido</small></div>
-              <div class="meta">
-                <div><strong>Pedido:</strong> ${p.id}</div>
-                <div><strong>Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</div>
+          <div class="header">
+            <h1>🏢 Soderia El Negrito</h1>
+            <h2>Pedido / Remito #${p.id}</h2>
+            <div class="divider"></div>
+            <div class="info-row">
+              <span class="info-label">Cliente:</span>
+              <span>${escapeHtml(p.cliente_nombre || 'N/A')}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Teléfono:</span>
+              <span>${escapeHtml(p.telefono || 'N/A')}</span>
+            </div>
+            ${p.email ? `<div class="info-row"><span class="info-label">Email:</span><span>${escapeHtml(p.email)}</span></div>` : ''}
+            <div class="info-row">
+              <span class="info-label">Dirección de envío:</span>
+              <span>${escapeHtml(p.direccion || 'N/A')}</span>
+            </div>
+            <div class="divider"></div>
+            <div class="info-row">
+              <span class="info-label">Fecha:</span>
+              <span>${new Date(p.fecha).toLocaleString()}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Estado:</span>
+              <span style="font-weight: bold; color: ${p.estado === 'entregado' ? 'green' : p.estado === 'enviado' ? 'orange' : '#6366f1'}">${p.estado || 'pendiente'}</span>
+            </div>
+          </div>
+          
+          <h3 style="margin-bottom:10px;color:#333">Detalle de Productos</h3>
+          ${productosHtml}
+          
+          <div class="footer">
+            <p style="margin:0 0 10px 0"><strong>Nota:</strong> Verificar productos al momento de la entrega.</p>
+            <div class="signature">
+              <div class="signature-box">
+                <div class="signature-line"></div>
+                <div style="margin-top:8px">Firma del Cliente</div>
+              </div>
+              <div class="signature-box">
+                <div class="signature-line"></div>
+                <div style="margin-top:8px">Firma del Repartidor</div>
               </div>
             </div>
-            <div style="margin-bottom:8px"><strong>Cliente:</strong> ${escapeHtml(p.cliente_nombre||'')}</div>
-            <div style="margin-bottom:8px"><strong>Teléfono:</strong> ${escapeHtml(p.telefono||'')}</div>
-            <div style="margin-bottom:8px"><strong>Dirección:</strong> ${escapeHtml(p.direccion||'')}</div>
-            <hr class="sep">
-            <div style="margin-top:10px;font-weight:600;text-align:right">Total: $${Number(p.total||0).toFixed(2)}</div>
-            <hr class="sep">
-            <div style="font-size:0.9rem;color:#374151">Imprimir y adjuntar al envío. Firma: ________________________</div>
           </div>
         </body>
       </html>`
@@ -1310,6 +1667,108 @@ async function printPedido(id){
     w.focus()
     setTimeout(()=>{ w.print(); w.close() }, 250)
   }catch(err){ console.error(err); showMessage('Error imprimiendo pedido','error') }
+}
+
+// Función para ver detalle del pedido con opción de cambiar estado
+async function viewPedidoDetail(id){
+  try{
+    const res = await fetch(`${API_BASE_URL}/pedidos/${id}`)
+    if (!res.ok) return showMessage('No se pudo obtener pedido','error')
+    const data = await res.json()
+    const p = data.pedido
+    
+    // Create modal for viewing and managing order
+    const modalId = 'pedidoModal_' + id
+    let existingModal = document.getElementById(modalId)
+    if (existingModal) existingModal.remove()
+    
+    // Construir tabla de productos
+    let productosHtml = ''
+    if (Array.isArray(p.productos) && p.productos.length > 0) {
+      productosHtml = '<table style="width:100%;border-collapse:collapse;margin-top:20px;border:2px solid #333"><thead><tr style="background:#f3f4f6"><th style="border:1px solid #666;padding:10px;text-align:left">Producto</th><th style="border:1px solid #666;padding:10px;text-align:center">Cantidad</th><th style="border:1px solid #666;padding:10px;text-align:right">Precio Unit.</th><th style="border:1px solid #666;padding:10px;text-align:right">Subtotal</th></tr></thead><tbody>'
+      p.productos.forEach(prod => {
+        const subtotal = Number(prod.cantidad) * Number(prod.precio_unitario || 0)
+        productosHtml += `<tr><td style="border:1px solid #666;padding:8px">${escapeHtml(prod.producto_nombre)}</td><td style="border:1px solid #666;padding:8px;text-align:center">${prod.cantidad}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${Number(prod.precio_unitario||0).toFixed(2)}</td><td style="border:1px solid #666;padding:8px;text-align:right">$${subtotal.toFixed(2)}</td></tr>`
+      })
+      productosHtml += `<tr style="font-weight:bold;background:#f9fafb"><td colspan="3" style="border:1px solid #666;padding:10px;text-align:right">TOTAL:</td><td style="border:1px solid #666;padding:10px;text-align:right">$${Number(p.total||0).toFixed(2)}</td></tr>`
+      productosHtml += '</tbody></table>'
+    }
+    
+    const modal = document.createElement('div')
+    modal.id = modalId
+    modal.className = 'modal'
+    modal.style.display = 'flex'
+    modal.innerHTML = `
+      <div class="modal-overlay" onclick="document.getElementById('${modalId}').remove()"></div>
+      <div class="modal-content" style="max-width:900px;max-height:90vh;overflow-y:auto">
+        <h3 style="margin-bottom:20px;color:#6366f1">📦 Pedido Cliente #${p.id}</h3>
+        
+        <div style="background:#f9fafb;border:2px solid #e2e8f0;padding:20px;border-radius:12px;margin-bottom:20px">
+          <h4 style="margin:0 0 15px 0;color:#111;font-size:18px">👤 Datos del Cliente</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><strong style="color:#64748b">Nombre:</strong> ${escapeHtml(p.cliente_nombre || 'N/A')}</div>
+            <div><strong style="color:#64748b">Teléfono:</strong> ${escapeHtml(p.telefono || 'N/A')}</div>
+            ${p.email ? `<div><strong style="color:#64748b">Email:</strong> ${escapeHtml(p.email)}</div>` : ''}
+            <div style="grid-column:1/-1"><strong style="color:#64748b">Dirección:</strong> ${escapeHtml(p.direccion || 'N/A')}</div>
+          </div>
+        </div>
+        
+        <div style="background:#fff;border:2px solid #e2e8f0;padding:20px;border-radius:12px;margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+            <div><strong style="color:#64748b">Fecha:</strong> ${new Date(p.fecha).toLocaleString()}</div>
+            <div><strong style="color:#64748b">Estado:</strong> 
+              <select id="estadoPedido_${id}" style="padding:8px 12px;border-radius:8px;border:2px solid #e2e8f0;font-weight:600">
+                <option value="pendiente" ${p.estado==='pendiente'?'selected':''}>⏳ Pendiente</option>
+                <option value="enviado" ${p.estado==='enviado'?'selected':''}>🚚 Enviado</option>
+                <option value="entregado" ${p.estado==='entregado'?'selected':''}>✅ Entregado</option>
+              </select>
+            </div>
+          </div>
+          ${p.notas ? `<div style="margin-top:12px"><strong style="color:#64748b">Notas:</strong> ${escapeHtml(p.notas)}</div>` : ''}
+        </div>
+        
+        <h4 style="margin:20px 0 10px 0;color:#333">Detalle de Productos</h4>
+        ${productosHtml}
+        
+        <div style="display:flex;gap:12px;margin-top:24px;justify-content:flex-end">
+          <button onclick="printPedido(${id})" class="auth-btn" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%)">🖨️ Imprimir</button>
+          <button onclick="document.getElementById('${modalId}').remove()" class="auth-btn" style="background:#64748b">Cerrar</button>
+        </div>
+      </div>
+    `
+    document.body.appendChild(modal)
+    
+    // Add event listener to estado selector
+    const estadoSelect = document.getElementById(`estadoPedido_${id}`)
+    if (estadoSelect) {
+      estadoSelect.addEventListener('change', async (e) => {
+        const nuevoEstado = e.target.value
+        console.log('Cambiando estado pedido a:', nuevoEstado) // DEBUG
+        if (!nuevoEstado || nuevoEstado === '') {
+          showMessage('Error: estado vacío', 'error')
+          return
+        }
+        try {
+          const payload = { estado: nuevoEstado }
+          const res = await fetch(`${API_BASE_URL}/pedidos/${id}/estado`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+          })
+          const data = await res.json()
+          if (res.ok) {
+            showMessage('Estado actualizado correctamente', 'success')
+            loadPedidos() // Reload table
+          } else {
+            showMessage(data.error || 'Error actualizando estado', 'error')
+          }
+        } catch (err) {
+          console.error(err)
+          showMessage('Error de red', 'error')
+        }
+      })
+    }
+  }catch(err){ console.error(err); showMessage('Error mostrando pedido','error') }
 }
 
 function computeSaleTotal(){
@@ -1354,7 +1813,8 @@ async function loadSales(date = null){
     let salesToShow = sales
     if (date) {
       salesToShow = sales.filter(sale => {
-        const saleDate = new Date(sale.fecha).toISOString().split('T')[0]
+        const d = new Date(sale.fecha)
+        const saleDate = localDateYYYYMMDD(d)
         return saleDate === date
       })
     }

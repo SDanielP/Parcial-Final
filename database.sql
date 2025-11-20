@@ -19,12 +19,12 @@ CREATE TABLE productos (
   descripcion TEXT,
   precio DECIMAL(10,2) NOT NULL,
   stock INT NOT NULL DEFAULT 0,
-  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  proveedor_id INT NULL,
+  categoria VARCHAR(100) NULL,
+  creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL
 );
--- Nueva columna: categoria y proveedor (opcional)
--- Si quieres habilitarlas en tu base de datos en producción, ejecuta:
--- ALTER TABLE productos ADD COLUMN categoria VARCHAR(100) NULL;
--- ALTER TABLE productos ADD COLUMN proveedor_id INT NULL;
+-- Nueva columna: categoria y proveedor ya incluidas en la tabla
 
 -- Tabla proveedores
 CREATE TABLE IF NOT EXISTS proveedores (
@@ -122,6 +122,17 @@ CREATE TABLE movimientos_caja (
   tipo ENUM('entrada','salida') NOT NULL,
   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (caja_id) REFERENCES caja(id) ON DELETE CASCADE
+);
+
+-- Tabla de pagos (vinculada a ventas)
+CREATE TABLE pagos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  venta_id INT NOT NULL,
+  tipo_pago ENUM('efectivo', 'tarjeta', 'qr', 'transferencia') NOT NULL,
+  monto DECIMAL(10,2) NOT NULL,
+  fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notas TEXT,
+  FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE
 );
 
 -- Insert sample admin user (password: admin123) - hashed value placeholder

@@ -23,7 +23,6 @@
                         <div id="ventasSubmenu" style="display:none; position:absolute; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
                             <a href="#" id="newSaleLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Nueva venta</a>
                             <a href="#" id="salesHistoryLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial</a>
-                            <a href="#" id="pedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos</a>
                             <a href="#" id="hojaRutaLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Hoja de ruta</a>
                         </div>
                     </div>
@@ -141,6 +140,22 @@
             </div>
         </section>
 
+        <!-- Cuenta pendiente de activación -->
+        <section class="dashboard-section" id="pendingSection" style="display:none;">
+            <div class="dashboard-container" style="max-width:720px;">
+                <h1>Cuenta pendiente de activación</h1>
+                <div class="dashboard-card" style="background:#fff7ed;border:2px solid #fdba74;">
+                    <p style="font-size:1.05rem;color:#7c2d12;">
+                        Tu cuenta aún no está activa. Por favor, aguarda a que un administrador revise y habilite tu acceso. Cuando tu rol sea actualizado, podrás ingresar a las funciones del sistema.
+                    </p>
+                    <p style="color:#92400e;">Si necesitas asistencia, contacta al administrador.</p>
+                    <div style="margin-top:12px;display:flex;gap:10px;">
+                        <button class="auth-btn" onclick="logout()" style="background:#ef4444;">Cerrar sesión</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Ventas: Nueva venta -->
         <section class="dashboard-section" id="newSaleSection" style="display:none;">
             <div class="dashboard-container">
@@ -163,6 +178,18 @@
                             <span style="font-size:1.2rem;font-weight:600;color:#64748b;">Total:</span>
                             <span id="saleTotalValue" style="font-size:1.5rem;font-weight:700;color:#0f172a;">$0.00</span>
                         </div>
+                        
+                        <!-- Tipo de pago -->
+                        <div class="form-group" style="margin-top:20px;">
+                            <label for="tipoPago">💳 Tipo de Pago</label>
+                            <select id="tipoPago" name="tipoPago" required style="font-size:1rem;padding:12px;font-weight:600;">
+                                <option value="efectivo">💵 Efectivo</option>
+                                <option value="tarjeta">💳 Tarjeta</option>
+                                <option value="qr">📱 QR</option>
+                                <option value="transferencia">🏦 Transferencia</option>
+                            </select>
+                        </div>
+                        
                         <!-- Envío: checkbox y campos de cliente -->
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:12px;">
                             <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="envioCheckbox"> Enviar a domicilio</label>
@@ -202,20 +229,12 @@
             </div>
         </section>
 
-        <!-- Pedidos: panel para moderador -> listar e imprimir hoja de ruta -->
-        <section class="dashboard-section" id="pedidosSection" style="display:none;">
-            <div class="dashboard-container">
-                <h1>Pedidos (Envios)</h1>
-                <div class="dashboard-card">
-                    <table id="pedidosTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
-                </div>
-            </div>
-        </section>
+        
 
         <!-- Hoja de ruta: listar ventas pendientes de envío y detalle de productos por venta -->
         <section class="dashboard-section" id="hojaRutaSection" style="display:none;">
             <div class="dashboard-container">
-                <h1>Hoja de ruta - Ventas con envío pendientes</h1>
+                <h1>Hoja de ruta</h1>
                 <div class="dashboard-card">
                     <table id="hojaRutaTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID Venta</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
@@ -242,6 +261,7 @@
                         <div class="form-group"><label>Descripcion</label><input name="descripcion"></div>
                         <div class="form-group"><label>Precio</label><input name="precio" type="number" step="0.01" required></div>
                         <div class="form-group"><label>Stock</label><input name="stock" type="number" required></div>
+                        <div class="form-group"><label>Proveedor</label><select name="proveedor_id" id="addProductProveedorSelect"><option value="">-- Seleccionar proveedor (opcional) --</option></select></div>
                         <button type="submit" class="auth-btn">Agregar</button>
                     </form>
                 </div>
