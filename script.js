@@ -333,8 +333,19 @@ function closeAllModals(){
 function hideAllSections(){
   // Hide known sections
   closeAllModals() // Close any open modals when changing sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection','listProductsSection','listClientesSection','listProveedoresSection','listHistorialSection','listCuentasCorrientesSection']
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection','listProductsSection','listClientesSection','listProveedoresSection','listHistorialSection','listCuentasCorrientesSection','alquileresSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
+  // También ocultar todas las secciones con clases específicas y limpiar estilos de posición
+  document.querySelectorAll('.auth-section, .dashboard-section, .welcome-section').forEach(s => {
+    s.style.display = 'none'
+    s.style.position = ''
+    s.style.top = ''
+    s.style.left = ''
+    s.style.right = ''
+    s.style.bottom = ''
+    s.style.overflowY = ''
+    s.style.zIndex = ''
+  })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded(); initPaymentSystem() } }
 
@@ -3385,6 +3396,662 @@ async function actualizarEstadosCuentas() {
     console.error(err)
     showMessage('Error actualizando estados', 'error')
   }
+}
+
+// ============================================
+// ALQUILERES DE DISPENSERS
+// ============================================
+
+// Event listeners para alquileres
+document.getElementById('alquileresLink')?.addEventListener('click', (e) => {
+  e.preventDefault()
+  hideAllSections()
+  closeAllSubmenus()
+  const section = document.getElementById('alquileresSection')
+  if (section) {
+    section.style.display = 'flex'
+    section.style.position = 'fixed'
+    section.style.top = '70px'
+    section.style.left = '0'
+    section.style.right = '0'
+    section.style.bottom = '0'
+    section.style.overflowY = 'auto'
+    section.style.zIndex = '10'
+  }
+  initAlquileres()
+})
+
+document.getElementById('newDispenserBtn')?.addEventListener('click', () => {
+  document.getElementById('dispenserForm').reset()
+  document.getElementById('dispenserId').value = ''
+  document.getElementById('dispenserModalTitle').textContent = 'Nuevo Dispenser'
+  document.getElementById('dispenserModal').style.display = 'flex'
+})
+
+document.getElementById('newAlquilerBtn')?.addEventListener('click', () => {
+  document.getElementById('alquilerForm').reset()
+  document.getElementById('alquilerFechaInicio').value = new Date().toISOString().split('T')[0]
+  cargarDispensersDisponibles()
+  cargarClientesAlquiler()
+  document.getElementById('alquilerModal').style.display = 'flex'
+})
+
+document.getElementById('generarPagosBtn')?.addEventListener('click', () => {
+  const hoy = new Date()
+  const mes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+  document.getElementById('generarPagosMes').value = mes
+  document.getElementById('generarPagosModal').style.display = 'flex'
+})
+
+// Tabs de alquileres
+// Cerrar modales al hacer clic en el overlay
+document.getElementById('dispenserModal')?.querySelector('.modal-overlay')?.addEventListener('click', () => {
+  document.getElementById('dispenserModal').style.display = 'none'
+})
+
+document.getElementById('alquilerModal')?.querySelector('.modal-overlay')?.addEventListener('click', () => {
+  document.getElementById('alquilerModal').style.display = 'none'
+})
+
+document.getElementById('pagoAlquilerModal')?.querySelector('.modal-overlay')?.addEventListener('click', () => {
+  document.getElementById('pagoAlquilerModal').style.display = 'none'
+})
+
+document.getElementById('generarPagosModal')?.querySelector('.modal-overlay')?.addEventListener('click', () => {
+  document.getElementById('generarPagosModal').style.display = 'none'
+})
+
+document.getElementById('detalleAlquilerModal')?.querySelector('.modal-overlay')?.addEventListener('click', () => {
+  document.getElementById('detalleAlquilerModal').style.display = 'none'
+})
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab
+    
+    // Actualizar botones
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    
+    // Actualizar contenido
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
+    document.getElementById(`tab-${tab}`).style.display = 'block'
+    
+    // Cargar datos según tab
+    if (tab === 'alquileres-activos') cargarAlquileresActivos()
+    else if (tab === 'pagos-pendientes') cargarPagosPendientes()
+    else if (tab === 'dispensers-list') cargarDispensers()
+    else if (tab === 'reportes-alquileres') cargarResumenAlquileres()
+  })
+})
+
+// Form: Guardar Dispenser
+document.getElementById('dispenserForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  
+  const id = document.getElementById('dispenserId').value
+  const data = {
+    codigo: document.getElementById('dispenserCodigo').value,
+    marca: document.getElementById('dispenserMarca').value,
+    modelo: document.getElementById('dispenserModelo').value,
+    numero_serie: document.getElementById('dispenserSerie').value,
+    precio_alquiler_mensual: document.getElementById('dispenserPrecio').value,
+    fecha_compra: document.getElementById('dispenserFechaCompra').value,
+    notas: document.getElementById('dispenserNotas').value
+  }
+  
+  try {
+    const url = id ? `${API_BASE_URL}/dispensers/${id}` : `${API_BASE_URL}/dispensers`
+    const method = id ? 'PUT' : 'POST'
+    
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al guardar')
+    }
+    
+    showMessage(id ? 'Dispenser actualizado' : 'Dispenser creado', 'success')
+    document.getElementById('dispenserModal').style.display = 'none'
+    cargarDispensers()
+  } catch (err) {
+    showMessage(err.message, 'error')
+  }
+})
+
+// Form: Crear Alquiler
+document.getElementById('alquilerForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  
+  const data = {
+    dispenser_id: document.getElementById('alquilerDispenser').value,
+    cliente_id: document.getElementById('alquilerCliente').value,
+    fecha_inicio: document.getElementById('alquilerFechaInicio').value,
+    precio_mensual: document.getElementById('alquilerPrecio').value,
+    dia_cobro: document.getElementById('alquilerDiaCobro').value,
+    deposito_garantia: document.getElementById('alquilerDeposito').value,
+    direccion_instalacion: document.getElementById('alquilerDireccion').value,
+    notas: document.getElementById('alquilerNotas').value,
+    usuario_registro_id: currentUser?.id
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE_URL}/alquileres`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al crear alquiler')
+    }
+    
+    showMessage('Alquiler creado exitosamente', 'success')
+    document.getElementById('alquilerModal').style.display = 'none'
+    cargarAlquileresActivos()
+  } catch (err) {
+    showMessage(err.message, 'error')
+  }
+})
+
+// Form: Registrar Pago Alquiler
+document.getElementById('pagoAlquilerForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  
+  const id = document.getElementById('pagoAlquilerId').value
+  const data = {
+    tipo_pago: document.getElementById('pagoAlquilerTipo').value,
+    usuario_cobro_id: currentUser?.id,
+    notas: document.getElementById('pagoAlquilerNotas').value
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE_URL}/pagos-alquiler/${id}/registrar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al registrar pago')
+    }
+    
+    showMessage('Pago registrado exitosamente', 'success')
+    document.getElementById('pagoAlquilerModal').style.display = 'none'
+    cargarPagosPendientes()
+  } catch (err) {
+    showMessage(err.message, 'error')
+  }
+})
+
+// Form: Generar Pagos Mensuales
+document.getElementById('generarPagosForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  
+  const mesInput = document.getElementById('generarPagosMes').value // formato: YYYY-MM
+  
+  try {
+    const res = await fetch(`${API_BASE_URL}/pagos-alquiler/generar-mensuales`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes: mesInput })
+    })
+    
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al generar pagos')
+    }
+    
+    const data = await res.json()
+    showMessage(`${data.generados} pagos generados, ${data.ya_existentes} ya existían`, 'success')
+    document.getElementById('generarPagosModal').style.display = 'none'
+    cargarPagosPendientes()
+  } catch (err) {
+    showMessage(err.message, 'error')
+  }
+})
+
+// Buscar cliente para alquiler
+document.getElementById('alquilerClienteBuscar')?.addEventListener('input', async (e) => {
+  const q = e.target.value.trim()
+  if (q.length < 2) return
+  
+  try {
+    const res = await fetch(`${API_BASE_URL}/clientes?q=${encodeURIComponent(q)}`)
+    if (!res.ok) return
+    
+    const data = await res.json()
+    const select = document.getElementById('alquilerCliente')
+    select.innerHTML = '<option value="">Seleccione...</option>'
+    
+    data.clientes?.forEach(c => {
+      const opt = document.createElement('option')
+      opt.value = c.id
+      opt.textContent = `${c.nombre} - ${c.telefono || 'Sin teléfono'}`
+      select.appendChild(opt)
+    })
+  } catch (err) {
+    console.error(err)
+  }
+})
+
+// Función: Inicializar alquileres
+function initAlquileres() {
+  console.log('🔧 Inicializando alquileres...')
+  
+  // Asegurar que la tab activa sea visible
+  const activeTab = document.querySelector('.tab-btn.active')
+  const tabId = activeTab ? activeTab.dataset.tab : 'alquileres-activos'
+  console.log('📑 Tab ID:', tabId)
+  
+  // Ocultar todos los contenidos
+  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
+  
+  // Mostrar el contenido activo
+  const activeContent = document.getElementById(`tab-${tabId}`)
+  console.log('📄 Contenido activo encontrado:', activeContent !== null)
+  if (activeContent) {
+    activeContent.style.display = 'block'
+    console.log('✅ Contenido mostrado')
+  }
+  
+  // Cargar datos de la tab activa
+  console.log('📊 Cargando datos...')
+  cargarAlquileresActivos()
+}
+
+// Función: Cargar alquileres activos
+async function cargarAlquileresActivos() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/alquileres?estado=activo`)
+    if (!res.ok) throw new Error('Error al cargar alquileres')
+    
+    const data = await res.json()
+    const tbody = document.querySelector('#alquileresActivosTable tbody')
+    tbody.innerHTML = ''
+    
+    if (!data.alquileres || data.alquileres.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;">No hay alquileres activos</td></tr>'
+      return
+    }
+    
+    data.alquileres.forEach(alq => {
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td>${alq.id}</td>
+        <td>${alq.dispenser_codigo} - ${alq.dispenser_marca || ''}</td>
+        <td>${alq.cliente_nombre}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${alq.direccion_instalacion}</td>
+        <td>${alq.fecha_inicio}</td>
+        <td>$${parseFloat(alq.precio_mensual).toFixed(2)}</td>
+        <td style="text-align:center;">${alq.dia_cobro}</td>
+        <td><span class="badge badge-success">${alq.estado}</span></td>
+        <td>
+          <button class="btn-small" onclick="verDetalleAlquiler(${alq.id})" style="background:#3b82f6;">Ver</button>
+          <button class="btn-small" onclick="finalizarAlquiler(${alq.id})" style="background:#ef4444;">Finalizar</button>
+        </td>
+      `
+      tbody.appendChild(tr)
+    })
+  } catch (err) {
+    console.error(err)
+    showMessage('Error al cargar alquileres', 'error')
+  }
+}
+
+// Función: Cargar pagos pendientes
+async function cargarPagosPendientes() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/pagos-alquiler?estado=pendiente`)
+    if (!res.ok) throw new Error('Error al cargar pagos')
+    
+    const data = await res.json()
+    const tbody = document.querySelector('#pagosPendientesTable tbody')
+    tbody.innerHTML = ''
+    
+    if (!data.pagos || data.pagos.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;">No hay pagos pendientes</td></tr>'
+      return
+    }
+    
+    data.pagos.forEach(pago => {
+      const fechaVenc = new Date(pago.fecha_vencimiento)
+      const hoy = new Date()
+      const vencido = fechaVenc < hoy
+      
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td>${pago.id}</td>
+        <td>${pago.cliente_nombre}</td>
+        <td>${pago.dispenser_codigo}</td>
+        <td>${pago.mes_cobro.substring(0, 7)}</td>
+        <td>$${parseFloat(pago.monto).toFixed(2)}</td>
+        <td style="color:${vencido ? '#ef4444' : '#64748b'};">${pago.fecha_vencimiento}</td>
+        <td><span class="badge ${vencido ? 'badge-error' : 'badge-warning'}">${vencido ? 'vencido' : 'pendiente'}</span></td>
+        <td>
+          <button class="btn-small" onclick="registrarPagoAlquiler(${pago.id}, '${pago.cliente_nombre}', '${pago.mes_cobro.substring(0, 7)}', ${pago.monto})" style="background:#10b981;">💵 Cobrar</button>
+        </td>
+      `
+      tbody.appendChild(tr)
+    })
+  } catch (err) {
+    console.error(err)
+    showMessage('Error al cargar pagos', 'error')
+  }
+}
+
+// Función: Cargar dispensers
+async function cargarDispensers() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/dispensers`)
+    if (!res.ok) throw new Error('Error al cargar dispensers')
+    
+    const data = await res.json()
+    const tbody = document.querySelector('#dispensersTable tbody')
+    tbody.innerHTML = ''
+    
+    if (!data.dispensers || data.dispensers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;">No hay dispensers registrados</td></tr>'
+      return
+    }
+    
+    data.dispensers.forEach(disp => {
+      const estadoBadge = {
+        'disponible': 'badge-success',
+        'alquilado': 'badge-info',
+        'mantenimiento': 'badge-warning',
+        'baja': 'badge-error'
+      }
+      
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td>${disp.id}</td>
+        <td><strong>${disp.codigo}</strong></td>
+        <td>${disp.marca || '-'}</td>
+        <td>${disp.modelo || '-'}</td>
+        <td>${disp.numero_serie || '-'}</td>
+        <td>$${parseFloat(disp.precio_alquiler_mensual).toFixed(2)}</td>
+        <td><span class="badge ${estadoBadge[disp.estado] || 'badge-secondary'}">${disp.estado}</span></td>
+        <td>
+          <button class="btn-small" onclick="editarDispenser(${disp.id})" style="background:#f59e0b;">Editar</button>
+          <select onchange="cambiarEstadoDispenser(${disp.id}, this.value)" style="font-size:12px;padding:4px;">
+            <option value="">Estado...</option>
+            <option value="disponible">Disponible</option>
+            <option value="alquilado">Alquilado</option>
+            <option value="mantenimiento">Mantenimiento</option>
+            <option value="baja">Baja</option>
+          </select>
+        </td>
+      `
+      tbody.appendChild(tr)
+    })
+  } catch (err) {
+    console.error(err)
+    showMessage('Error al cargar dispensers', 'error')
+  }
+}
+
+// Función: Cargar resumen
+async function cargarResumenAlquileres() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/alquileres/reporte/resumen`)
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}))
+      console.error('Error en resumen:', res.status, error)
+      throw new Error(`Error al cargar resumen: ${error.error || res.statusText}`)
+    }
+    
+    const data = await res.json()
+    const container = document.getElementById('resumenAlquileres')
+    
+    container.innerHTML = `
+      <div class="stat-card">
+        <h4>🌊 Dispensers Totales</h4>
+        <p class="stat-number">${data.dispensers.total}</p>
+        <div style="font-size:14px;color:#64748b;margin-top:8px;">
+          ✅ Disponibles: ${data.dispensers.disponibles}<br>
+          🔵 Alquilados: ${data.dispensers.alquilados}<br>
+          🔧 Mantenimiento: ${data.dispensers.en_mantenimiento}
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <h4>📋 Alquileres Activos</h4>
+        <p class="stat-number">${data.alquileres.activos}</p>
+      </div>
+      
+      <div class="stat-card">
+        <h4>⏳ Pagos Pendientes</h4>
+        <p class="stat-number">${data.pagos.pendientes_count}</p>
+        <div style="font-size:14px;color:#64748b;margin-top:8px;">
+          Monto: $${data.pagos.pendientes_monto.toFixed(2)}
+        </div>
+      </div>
+      
+      <div class="stat-card" style="border:2px solid #ef4444;">
+        <h4>⚠️ Pagos Vencidos</h4>
+        <p class="stat-number" style="color:#ef4444;">${data.pagos.vencidos_count}</p>
+        <div style="font-size:14px;color:#ef4444;margin-top:8px;">
+          Monto: $${data.pagos.vencidos_monto.toFixed(2)}
+        </div>
+      </div>
+      
+      <div class="stat-card" style="background:#10b981;color:white;">
+        <h4>💰 Ingresos del Mes</h4>
+        <p class="stat-number" style="color:white;">$${data.ingresos.mes_actual.toFixed(2)}</p>
+      </div>
+    `
+  } catch (err) {
+    console.error(err)
+    showMessage('Error al cargar resumen', 'error')
+  }
+}
+
+// Función: Cargar dispensers disponibles para alquiler
+async function cargarDispensersDisponibles() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/dispensers?estado=disponible`)
+    if (!res.ok) return
+    
+    const data = await res.json()
+    const select = document.getElementById('alquilerDispenser')
+    select.innerHTML = '<option value="">Seleccione...</option>'
+    
+    data.dispensers?.forEach(d => {
+      const opt = document.createElement('option')
+      opt.value = d.id
+      opt.textContent = `${d.codigo} - ${d.marca || ''} ${d.modelo || ''} ($${parseFloat(d.precio_alquiler_mensual).toFixed(2)}/mes)`
+      opt.dataset.precio = d.precio_alquiler_mensual
+      select.appendChild(opt)
+    })
+    
+    // Auto-completar precio al seleccionar dispenser
+    select.addEventListener('change', (e) => {
+      const opt = e.target.selectedOptions[0]
+      if (opt && opt.dataset.precio) {
+        document.getElementById('alquilerPrecio').value = opt.dataset.precio
+      }
+    })
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// Función: Cargar clientes para alquiler
+async function cargarClientesAlquiler() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/clientes`)
+    if (!res.ok) return
+    
+    const data = await res.json()
+    const select = document.getElementById('alquilerCliente')
+    select.innerHTML = '<option value="">Seleccione...</option>'
+    
+    data.clientes?.filter(c => c.estado !== 'deudor').forEach(c => {
+      const opt = document.createElement('option')
+      opt.value = c.id
+      opt.textContent = `${c.nombre} - ${c.telefono || 'Sin teléfono'}`
+      select.appendChild(opt)
+    })
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// Función: Editar dispenser
+async function editarDispenser(id) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/dispensers/${id}`)
+    if (!res.ok) throw new Error('Error al cargar dispenser')
+    
+    const data = await res.json()
+    const disp = data.dispenser
+    
+    document.getElementById('dispenserId').value = disp.id
+    document.getElementById('dispenserCodigo').value = disp.codigo
+    document.getElementById('dispenserMarca').value = disp.marca || ''
+    document.getElementById('dispenserModelo').value = disp.modelo || ''
+    document.getElementById('dispenserSerie').value = disp.numero_serie || ''
+    document.getElementById('dispenserPrecio').value = disp.precio_alquiler_mensual
+    document.getElementById('dispenserFechaCompra').value = disp.fecha_compra || ''
+    document.getElementById('dispenserNotas').value = disp.notas || ''
+    
+    document.getElementById('dispenserModalTitle').textContent = 'Editar Dispenser'
+    document.getElementById('dispenserModal').style.display = 'flex'
+  } catch (err) {
+    showMessage('Error al cargar dispenser', 'error')
+  }
+}
+
+// Función: Cambiar estado de dispenser
+async function cambiarEstadoDispenser(id, estado) {
+  if (!estado) return
+  
+  try {
+    const res = await fetch(`${API_BASE_URL}/dispensers/${id}/estado`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estado })
+    })
+    
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al cambiar estado')
+    }
+    
+    showMessage('Estado actualizado', 'success')
+    cargarDispensers()
+  } catch (err) {
+    showMessage(err.message, 'error')
+    cargarDispensers()
+  }
+}
+
+// Función: Ver detalle de alquiler
+async function verDetalleAlquiler(id) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/alquileres/${id}`)
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}))
+      console.error('Error en detalle:', res.status, error)
+      throw new Error(`Error al cargar detalle: ${error.error || res.statusText}`)
+    }
+    
+    const data = await res.json()
+    const alq = data.alquiler
+    
+    const html = `
+      <h3>Detalle Alquiler #${alq.id}</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;padding:16px;background:#f8fafc;border-radius:8px;">
+        <div><strong>Dispenser:</strong> ${alq.dispenser_codigo} - ${alq.dispenser_marca} ${alq.dispenser_modelo}</div>
+        <div><strong>Cliente:</strong> ${alq.cliente_nombre}</div>
+        <div><strong>Teléfono:</strong> ${alq.cliente_telefono}</div>
+        <div><strong>Dirección Cliente:</strong> ${alq.cliente_direccion || '-'}</div>
+        <div style="grid-column:1/-1;"><strong>Dirección Instalación:</strong> ${alq.direccion_instalacion}</div>
+        <div><strong>Inicio:</strong> ${alq.fecha_inicio}</div>
+        <div><strong>Precio Mensual:</strong> $${parseFloat(alq.precio_mensual).toFixed(2)}</div>
+        <div><strong>Día de Cobro:</strong> ${alq.dia_cobro}</div>
+        <div><strong>Depósito:</strong> $${parseFloat(alq.deposito_garantia || 0).toFixed(2)}</div>
+        <div><strong>Estado:</strong> <span class="badge badge-success">${alq.estado}</span></div>
+      </div>
+      
+      <h4 style="margin-top:20px;">Historial de Pagos</h4>
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="margin-top:12px;">
+          <thead>
+            <tr>
+              <th>Mes</th>
+              <th>Monto</th>
+              <th>Vencimiento</th>
+              <th>Fecha Pago</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${alq.pagos && alq.pagos.length > 0 ? alq.pagos.map(p => `
+              <tr>
+                <td>${p.mes_cobro.substring(0, 7)}</td>
+                <td>$${parseFloat(p.monto).toFixed(2)}</td>
+                <td>${p.fecha_vencimiento}</td>
+                <td>${p.fecha_pago ? p.fecha_pago.substring(0, 10) : '-'}</td>
+                <td>${p.tipo_pago || '-'}</td>
+                <td><span class="badge ${p.estado === 'pagado' ? 'badge-success' : 'badge-warning'}">${p.estado}</span></td>
+              </tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center;color:#94a3b8;">No hay pagos registrados</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      
+      ${alq.notas ? `<div style="margin-top:16px;padding:12px;background:#fef3c7;border-radius:8px;"><strong>Notas:</strong><br>${alq.notas}</div>` : ''}
+    `
+    
+    document.getElementById('detalleAlquilerContent').innerHTML = html
+    document.getElementById('detalleAlquilerModal').style.display = 'flex'
+  } catch (err) {
+    showMessage('Error al cargar detalle', 'error')
+  }
+}
+
+// Función: Finalizar alquiler
+async function finalizarAlquiler(id) {
+  const fecha_fin = prompt('Fecha de finalización (YYYY-MM-DD):', new Date().toISOString().split('T')[0])
+  if (!fecha_fin) return
+  
+  const notas = prompt('Notas de finalización (opcional):')
+  
+  try {
+    const res = await fetch(`${API_BASE_URL}/alquileres/${id}/finalizar`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fecha_fin, notas })
+    })
+    
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || 'Error al finalizar')
+    }
+    
+    showMessage('Alquiler finalizado exitosamente', 'success')
+    cargarAlquileresActivos()
+  } catch (err) {
+    showMessage(err.message, 'error')
+  }
+}
+
+// Función: Registrar pago de alquiler
+function registrarPagoAlquiler(id, cliente, mes, monto) {
+  document.getElementById('pagoAlquilerId').value = id
+  document.getElementById('pagoAlquilerCliente').value = cliente
+  document.getElementById('pagoAlquilerMes').value = mes
+  document.getElementById('pagoAlquilerMonto').value = `$${parseFloat(monto).toFixed(2)}`
+  document.getElementById('pagoAlquilerModal').style.display = 'flex'
 }
 
 // Start

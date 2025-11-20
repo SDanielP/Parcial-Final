@@ -32,6 +32,7 @@
                             <a href="#" id="listHistorialLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial de Precios</a>
                             <a href="#" id="stockReportsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Reportes de Stock</a>
                             <a href="#" id="stockPedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos Proveedores</a>
+                            <a href="#" id="alquileresLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Alquileres</a>
                         </div>
                     </div>
                     <div class="menu-item" style="position:relative;">
@@ -747,6 +748,275 @@
         </div>
     </div>
 
-    <script src="script.js?v=12"></script>
+    <!-- Alquileres Section -->
+    <section class="auth-section" id="alquileresSection" style="display:none;">
+        <div class="auth-container" style="max-width:1400px;">
+            <div class="auth-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <h2>🌊 Alquileres de Dispensers</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button class="auth-btn" id="newDispenserBtn" style="background:#3b82f6;">➕ Nuevo Dispenser</button>
+                        <button class="auth-btn" id="newAlquilerBtn" style="background:#10b981;">➕ Nuevo Alquiler</button>
+                    </div>
+                </div>
+
+                <!-- Tabs de navegación -->
+                <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid #e2e8f0;">
+                    <button class="tab-btn active" data-tab="alquileres-activos">Alquileres Activos</button>
+                    <button class="tab-btn" data-tab="pagos-pendientes">Pagos Pendientes</button>
+                    <button class="tab-btn" data-tab="dispensers-list">Dispensers</button>
+                    <button class="tab-btn" data-tab="reportes-alquileres">Resumen</button>
+                </div>
+
+                <!-- Tab: Alquileres Activos -->
+                <div class="tab-content active" id="tab-alquileres-activos" style="display:block;">
+                    <h3>Alquileres Activos</h3>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="alquileresActivosTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Dispenser</th>
+                                    <th>Cliente</th>
+                                    <th>Dirección</th>
+                                    <th>Inicio</th>
+                                    <th>Precio</th>
+                                    <th>Día Cobro</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab: Pagos Pendientes -->
+                <div class="tab-content" id="tab-pagos-pendientes" style="display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h3>Pagos de Alquiler Pendientes</h3>
+                        <button class="auth-btn" id="generarPagosBtn" style="background:#f59e0b;">📅 Generar Pagos Mes</button>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="pagosPendientesTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Cliente</th>
+                                    <th>Dispenser</th>
+                                    <th>Mes</th>
+                                    <th>Monto</th>
+                                    <th>Vencimiento</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab: Dispensers -->
+                <div class="tab-content" id="tab-dispensers-list" style="display:none;">
+                    <h3>Inventario de Dispensers</h3>
+                    <div style="overflow-x:auto;">
+                        <table class="data-table" id="dispensersTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Código</th>
+                                    <th>Marca</th>
+                                    <th>Modelo</th>
+                                    <th>N° Serie</th>
+                                    <th>Precio Alq.</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab: Reportes -->
+                <div class="tab-content" id="tab-reportes-alquileres" style="display:none;">
+                    <h3>Resumen de Alquileres</h3>
+                    <div id="resumenAlquileres" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px;">
+                        <!-- Se llenará dinámicamente -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modal: Nuevo/Editar Dispenser -->
+    <div id="dispenserModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3 id="dispenserModalTitle">Nuevo Dispenser</h3>
+            <form id="dispenserForm">
+                <input type="hidden" id="dispenserId">
+                <div class="form-group">
+                    <label>Código *</label>
+                    <input type="text" id="dispenserCodigo" required placeholder="DISP-001">
+                </div>
+                <div class="form-group">
+                    <label>Marca *</label>
+                    <input type="text" id="dispenserMarca" required placeholder="Drago">
+                </div>
+                <div class="form-group">
+                    <label>Modelo</label>
+                    <input type="text" id="dispenserModelo" placeholder="Classic">
+                </div>
+                <div class="form-group">
+                    <label>Número de Serie</label>
+                    <input type="text" id="dispenserSerie" placeholder="SN001234">
+                </div>
+                <div class="form-group">
+                    <label>Precio Alquiler Mensual *</label>
+                    <input type="number" step="0.01" id="dispenserPrecio" required placeholder="500.00">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Compra</label>
+                    <input type="date" id="dispenserFechaCompra">
+                </div>
+                <div class="form-group">
+                    <label>Notas</label>
+                    <textarea id="dispenserNotas" rows="3"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Guardar</button>
+                    <button type="button" class="auth-btn" style="background:#64748b;" onclick="document.getElementById('dispenserModal').style.display='none'">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Nuevo Alquiler -->
+    <div id="alquilerModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>Nuevo Alquiler</h3>
+            <form id="alquilerForm">
+                <div class="form-group">
+                    <label>Dispenser *</label>
+                    <select id="alquilerDispenser" required>
+                        <option value="">Seleccione...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cliente *</label>
+                    <input type="text" id="alquilerClienteBuscar" placeholder="Buscar cliente...">
+                    <select id="alquilerCliente" required style="margin-top:8px;">
+                        <option value="">Seleccione...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Fecha de Inicio *</label>
+                    <input type="date" id="alquilerFechaInicio" required>
+                </div>
+                <div class="form-group">
+                    <label>Precio Mensual *</label>
+                    <input type="number" step="0.01" id="alquilerPrecio" required placeholder="500.00">
+                </div>
+                <div class="form-group">
+                    <label>Día de Cobro (1-31)</label>
+                    <input type="number" id="alquilerDiaCobro" min="1" max="31" value="15" required>
+                </div>
+                <div class="form-group">
+                    <label>Depósito en Garantía</label>
+                    <input type="number" step="0.01" id="alquilerDeposito" value="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label>Dirección de Instalación *</label>
+                    <textarea id="alquilerDireccion" rows="2" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Notas</label>
+                    <textarea id="alquilerNotas" rows="2"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Crear Alquiler</button>
+                    <button type="button" class="auth-btn" style="background:#64748b;" onclick="document.getElementById('alquilerModal').style.display='none'">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Registrar Pago Alquiler -->
+    <div id="pagoAlquilerModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>Registrar Pago de Alquiler</h3>
+            <form id="pagoAlquilerForm">
+                <input type="hidden" id="pagoAlquilerId">
+                <div class="form-group">
+                    <label>Cliente</label>
+                    <input id="pagoAlquilerCliente" readonly style="background:#f1f5f9;">
+                </div>
+                <div class="form-group">
+                    <label>Mes a Cobrar</label>
+                    <input id="pagoAlquilerMes" readonly style="background:#f1f5f9;">
+                </div>
+                <div class="form-group">
+                    <label>Monto</label>
+                    <input id="pagoAlquilerMonto" readonly style="background:#f1f5f9;">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de Pago *</label>
+                    <select id="pagoAlquilerTipo" required>
+                        <option value="">Seleccione...</option>
+                        <option value="efectivo">💵 Efectivo</option>
+                        <option value="tarjeta">💳 Tarjeta</option>
+                        <option value="qr">📱 QR</option>
+                        <option value="transferencia">🏦 Transferencia</option>
+                        <option value="cuenta_corriente">📋 Cuenta Corriente</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notas (opcional)</label>
+                    <textarea id="pagoAlquilerNotas" rows="3"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Registrar Pago</button>
+                    <button type="button" class="auth-btn" style="background:#64748b;" onclick="document.getElementById('pagoAlquilerModal').style.display='none'">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Generar Pagos Mensuales -->
+    <div id="generarPagosModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width:400px;">
+            <h3>Generar Pagos Mensuales</h3>
+            <form id="generarPagosForm">
+                <div class="form-group">
+                    <label>Mes a Generar (YYYY-MM) *</label>
+                    <input type="month" id="generarPagosMes" required>
+                </div>
+                <p style="color:#64748b;font-size:14px;margin:12px 0;">
+                    Esto creará pagos pendientes para todos los alquileres activos del mes seleccionado.
+                </p>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Generar Pagos</button>
+                    <button type="button" class="auth-btn" style="background:#64748b;" onclick="document.getElementById('generarPagosModal').style.display='none'">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Detalle de Alquiler -->
+    <div id="detalleAlquilerModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width:900px;">
+            <div id="detalleAlquilerContent"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+                <button type="button" class="auth-btn" style="background:#64748b;" onclick="document.getElementById('detalleAlquilerModal').style.display='none'">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=13"></script>
 </body>
 </html>
