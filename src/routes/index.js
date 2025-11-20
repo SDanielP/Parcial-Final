@@ -525,11 +525,14 @@ router.post('/ventas', async (req, res) => {
   const [ventaResult] = await conn.query('INSERT INTO ventas (total, usuario_id) VALUES (?, ?)', [total, usuario_id]);
     const ventaId = ventaResult.insertId;
     
-    // Registrar los pagos (puede ser 1 o más)
+    // Registrar los pagos (puede ser 1 o más) y movimientos por pago procesado
     for (const pago of pagos) {
-      await conn.query('INSERT INTO pagos (venta_id, tipo_pago, monto) VALUES (?, ?, ?)', [ventaId, pago.tipo_pago, pago.monto]);
-      
-      // Si es cuenta corriente, crear registro en cuentas_corrientes
+      // estado por defecto
+      const estadoPago = pago.estado && ['pendiente','procesado','cancelado','anulado'].includes(pago.estado) ? pago.estado : 'procesado'
+      const [pagoRes] = await conn.query('INSERT INTO pagos (venta_id, tipo_pago, monto, estado) VALUES (?, ?, ?, ?)', [ventaId, pago.tipo_pago, pago.monto, estadoPago]);
+      const pagoId = pagoRes.insertId
+
+      // Si es cuenta corriente, crear registro en cuentas_corrientes y NO registrar movimiento de caja
       if (pago.tipo_pago === 'cuenta_corriente' && pago.cliente_id) {
         const fechaVencimiento = new Date();
         fechaVencimiento.setDate(15); // Día 15
@@ -541,6 +544,21 @@ router.post('/ventas', async (req, res) => {
           'INSERT INTO cuentas_corrientes (venta_id, cliente_id, monto, saldo_pendiente, fecha_vencimiento) VALUES (?, ?, ?, ?, ?)',
           [ventaId, pago.cliente_id, pago.monto, pago.monto, fechaVencimiento.toISOString().split('T')[0]]
         );
+        continue; // saltar movimiento en caja
+      }
+
+      // Registrar movimiento en caja según estado/tipo
+      if (estadoPago === 'procesado' && pago.tipo_pago !== 'cuenta_corriente') {
+        try{
+          const [rows] = await conn.query('SELECT id FROM caja WHERE cierre IS NULL ORDER BY fecha DESC LIMIT 1')
+          const cajaRow = rows && rows[0] ? rows[0] : null
+          if (cajaRow && cajaRow.id){
+            await conn.query(
+              'INSERT INTO movimientos_caja (caja_id, pago_id, descripcion, monto, tipo) VALUES (?, ?, ?, ?, ?)',
+              [cajaRow.id, pagoId, `Pago ${pago.tipo_pago} Venta #${ventaId} (pago #${pagoId})`, pago.monto, 'entrada']
+            )
+          }
+        }catch(errMov){ console.error('Error registrando movimiento por pago', errMov) }
       }
     }
     
@@ -574,27 +592,10 @@ router.post('/ventas', async (req, res) => {
       }
     }
 
-    // intentar registrar movimiento en caja actual (si existe)
-    let movimientoInserted = false
-    let movimientoId = null
-    let cajaUsedId = null
-    try{
-      const [rows] = await conn.query('SELECT id FROM caja WHERE cierre IS NULL ORDER BY fecha DESC LIMIT 1')
-      const cajaRow = rows && rows[0] ? rows[0] : null
-      if (cajaRow && cajaRow.id){
-        const cajaId = cajaRow.id
-        cajaUsedId = cajaId
-        const [movRes] = await conn.query('INSERT INTO movimientos_caja (caja_id, descripcion, monto, tipo) VALUES (?, ?, ?, ?)', [cajaId, `Venta #${ventaId}`, total, 'entrada'])
-        movimientoInserted = Boolean(movRes && movRes.insertId)
-        movimientoId = movRes.insertId
-      }
-    }catch(errMov){
-      // loguear el error y continuar (no hacer rollback de la venta)
-      console.error('Error registrando movimiento de caja para la venta', errMov)
-    }
+    // Ya no se registra un único movimiento por el total; se registran por pago
     await conn.commit();
-  console.log('Venta registrada:', { ventaId, movimientoInserted, movimientoId, cajaId: cajaUsedId, pedidoInserted, pedidoId })
-  res.status(201).json({ message: 'Venta registrada', ventaId, movimientoInserted, movimientoId, cajaId: cajaUsedId, pedidoInserted, pedidoId });
+  console.log('Venta registrada:', { ventaId, pedidoInserted, pedidoId })
+  res.status(201).json({ message: 'Venta registrada', ventaId, pedidoInserted, pedidoId });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
@@ -635,6 +636,77 @@ router.get('/ventas', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Pagos endpoints
+// GET /api/pagos?venta_id= -> lista pagos por venta (o todos)
+router.get('/pagos', async (req, res) => {
+  try{
+    const ventaId = req.query.venta_id
+    let rows
+    if (ventaId){ rows = await query('SELECT id, venta_id, tipo_pago, monto, estado, fecha FROM pagos WHERE venta_id = ? ORDER BY id', [ventaId]) }
+    else { rows = await query('SELECT id, venta_id, tipo_pago, monto, estado, fecha FROM pagos ORDER BY fecha DESC LIMIT 200') }
+    res.json({ pagos: rows })
+  }catch(err){ res.status(500).json({ error: err.message }) }
+})
+
+// PUT /api/pagos/:id/estado -> cambia estado del pago y ajusta movimientos de caja
+router.put('/pagos/:id/estado', async (req, res) => {
+  const { id } = req.params
+  const { estado } = req.body
+  const allowed = ['pendiente','procesado','cancelado','anulado']
+  if (!allowed.includes(estado)) return res.status(400).json({ error: 'Estado inválido' })
+  const conn = await pool.promise().getConnection()
+  try{
+    await conn.beginTransaction()
+    const [rows] = await conn.query('SELECT * FROM pagos WHERE id = ?', [id])
+    if (!rows || rows.length===0){ await conn.rollback(); return res.status(404).json({ error: 'Pago no encontrado' }) }
+    const pago = rows[0]
+    const estadoAnterior = pago.estado
+
+    // Solo procesar si el estado realmente cambia
+    if (estadoAnterior === estado) {
+      await conn.commit()
+      return res.json({ message: 'Estado sin cambios' })
+    }
+
+    // Obtener caja abierta si se necesita
+    const [cajas] = await conn.query('SELECT id FROM caja WHERE cierre IS NULL ORDER BY fecha DESC LIMIT 1')
+    
+    // Lógica de cambio de estado para pagos que NO son cuenta corriente
+    if (pago.tipo_pago !== 'cuenta_corriente'){
+      
+      // REVERTIR el efecto del estado anterior
+      if (estadoAnterior === 'procesado') {
+        // Si estaba procesado, quitar ese dinero (SALIDA)
+        if (!cajas || cajas.length===0){ await conn.rollback(); return res.status(409).json({ error: 'No hay caja abierta para revertir el pago procesado' }) }
+        await conn.query('INSERT INTO movimientos_caja (caja_id, pago_id, descripcion, monto, tipo) VALUES (?, ?, ?, ?, ?)', 
+          [cajas[0].id, id, `Reversión de pago #${id} (${estadoAnterior} → ${estado})`, pago.monto, 'salida'])
+      } else if (estadoAnterior === 'anulado') {
+        // Si estaba anulado, devolver ese dinero (ENTRADA)
+        if (!cajas || cajas.length===0){ await conn.rollback(); return res.status(409).json({ error: 'No hay caja abierta para revertir la anulación' }) }
+        await conn.query('INSERT INTO movimientos_caja (caja_id, pago_id, descripcion, monto, tipo) VALUES (?, ?, ?, ?, ?)', 
+          [cajas[0].id, id, `Reversión de anulación #${id} (${estadoAnterior} → ${estado})`, pago.monto, 'entrada'])
+      }
+      // cancelado/pendiente no tienen efecto en caja, no hay nada que revertir
+
+      // APLICAR el efecto del nuevo estado
+      if (estado === 'procesado'){
+        if (!cajas || cajas.length===0){ await conn.rollback(); return res.status(409).json({ error: 'No hay caja abierta para procesar el pago' }) }
+        await conn.query('INSERT INTO movimientos_caja (caja_id, pago_id, descripcion, monto, tipo) VALUES (?, ?, ?, ?, ?)', 
+          [cajas[0].id, id, `Pago procesado #${id} - Venta #${pago.venta_id}`, pago.monto, 'entrada'])
+      } else if (estado === 'anulado'){
+        if (!cajas || cajas.length===0){ await conn.rollback(); return res.status(409).json({ error: 'No hay caja abierta para anular el pago' }) }
+        await conn.query('INSERT INTO movimientos_caja (caja_id, pago_id, descripcion, monto, tipo) VALUES (?, ?, ?, ?, ?)', 
+          [cajas[0].id, id, `Pago anulado #${id} - Devolución Venta #${pago.venta_id}`, pago.monto, 'salida'])
+      }
+      // cancelado o pendiente: no afectan la caja
+    }
+
+    await conn.query('UPDATE pagos SET estado = ? WHERE id = ?', [estado, id])
+    await conn.commit()
+    res.json({ message: 'Estado de pago actualizado', estadoAnterior, estadoNuevo: estado })
+  }catch(err){ await conn.rollback(); res.status(500).json({ error: err.message }) } finally { conn.release() }
+})
 
 // Caja endpoints
 // POST /api/caja/apertura -> { fecha, apertura, usuario_id }
@@ -735,6 +807,63 @@ router.get('/caja/ultima', async (req, res) => {
   }
 });
 
+// GET /api/caja/arqueo-mensual?mes=YYYY-MM -> resumen mensual con cierre el día 25 de cada mes
+router.get('/caja/arqueo-mensual', async (req, res) => {
+  const mes = (req.query.mes || '').trim(); // formato esperado YYYY-MM
+  if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'Formato de mes inválido. Use YYYY-MM.' });
+  try {
+    const [anioStr, mesStr] = mes.split('-');
+    const anio = parseInt(anioStr, 10);
+    const m = parseInt(mesStr, 10); // mes actual del cierre mensual
+    // Periodo: desde 26 del mes anterior hasta 25 del mes actual
+    let anioInicio = anio;
+    let mesInicio = m - 1;
+    if (mesInicio === 0) { mesInicio = 12; anioInicio = anio - 1; }
+    const desde = `${anioInicio}-${String(mesInicio).padStart(2,'0')}-26`;
+    const hasta = `${anio}-${String(m).padStart(2,'0')}-25`;
+
+    // Traer cajas dentro del periodo
+    const cajasRaw = await query('SELECT id, fecha, apertura, cierre FROM caja WHERE fecha BETWEEN ? AND ? ORDER BY fecha', [desde, hasta]);
+    const cajas = cajasRaw.map(c => ({ ...c, estado: c.cierre == null ? 'abierta' : 'cerrada' }));
+    const cajaIds = cajas.map(c => c.id);
+    let movimientos = [];
+    if (cajaIds.length > 0) {
+      // Construir placeholders seguros para IN
+      const placeholders = cajaIds.map(()=>'?').join(',');
+      movimientos = await query(
+        `SELECT tipo, monto FROM movimientos_caja WHERE caja_id IN (${placeholders})`,
+        cajaIds
+      );
+    }
+
+    const total_aperturas = cajas.reduce((acc,c) => acc + parseFloat(c.apertura || 0), 0);
+    const total_cierres = cajas.reduce((acc,c) => acc + (c.cierre != null ? parseFloat(c.cierre) : 0), 0);
+    const entradas = movimientos.filter(mv => mv.tipo === 'entrada').reduce((a,b)=> a + parseFloat(b.monto||0),0);
+    const salidas = movimientos.filter(mv => mv.tipo === 'salida').reduce((a,b)=> a + parseFloat(b.monto||0),0);
+    const neto_movimientos = entradas - salidas;
+    // Saldo esperado teórico acumulado: suma aperturas + entradas - salidas
+    const saldo_esperado = total_aperturas + entradas - salidas;
+    // Diferencia contra cierres registrados (si faltan cierres se considera parcial)
+    const diferencia_cierres = total_cierres === 0 ? null : (total_cierres - saldo_esperado);
+
+    res.json({
+      mes,
+      periodo: { desde, hasta },
+      resumen: {
+        total_aperturas: parseFloat(total_aperturas.toFixed(2)),
+        entradas: parseFloat(entradas.toFixed(2)),
+        salidas: parseFloat(salidas.toFixed(2)),
+        neto_movimientos: parseFloat(neto_movimientos.toFixed(2)),
+        saldo_esperado: parseFloat(saldo_esperado.toFixed(2)),
+        total_cierres: parseFloat(total_cierres.toFixed(2)),
+        diferencia_cierres: diferencia_cierres != null ? parseFloat(diferencia_cierres.toFixed(2)) : null
+      },
+      cajas
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // ========== ENDPOINTS PARA CAMBIO DE ESTADOS ==========
 
 // PUT /api/productos/:id/estado -> cambiar estado del producto

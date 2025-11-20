@@ -117,11 +117,13 @@ CREATE TABLE caja (
 CREATE TABLE movimientos_caja (
   id INT AUTO_INCREMENT PRIMARY KEY,
   caja_id INT,
+  pago_id INT NULL,
   descripcion VARCHAR(255),
   monto DECIMAL(10,2) NOT NULL,
   tipo ENUM('entrada','salida') NOT NULL,
   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (caja_id) REFERENCES caja(id) ON DELETE CASCADE
+  FOREIGN KEY (caja_id) REFERENCES caja(id) ON DELETE CASCADE,
+  FOREIGN KEY (pago_id) REFERENCES pagos(id) ON DELETE SET NULL
 );
 
 -- Tabla de pagos (vinculada a ventas)
@@ -130,6 +132,7 @@ CREATE TABLE pagos (
   venta_id INT NOT NULL,
   tipo_pago ENUM('efectivo', 'tarjeta', 'qr', 'transferencia') NOT NULL,
   monto DECIMAL(10,2) NOT NULL,
+  estado ENUM('pendiente','procesado','cancelado','anulado') DEFAULT 'procesado',
   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   notas TEXT,
   FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE

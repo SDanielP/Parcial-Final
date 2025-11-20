@@ -27,10 +27,10 @@
                         </div>
                     </div>
                     <div class="menu-item" style="position:relative;">
-                        <button class="nav-btn" id="stockMenuBtn">Stock ▾</button>
+                        <button class="nav-btn" id="stockMenuBtn">Utilidades ▾</button>
                         <div id="stockSubmenu" style="display:none; position:absolute; left:0; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
-                            <a href="#" id="addProductLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Ingresar producto</a>
-                            <a href="#" id="stockReportsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Reportes</a>
+                            <a href="#" id="listHistorialLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial de Precios</a>
+                            <a href="#" id="stockReportsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Reportes de Stock</a>
                             <a href="#" id="stockPedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos Proveedores</a>
                         </div>
                     </div>
@@ -40,6 +40,7 @@
                             <a href="#" id="cajaOpenLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Apertura</a>
                             <a href="#" id="cajaCloseLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Cierre</a>
                             <a href="#" id="cajaMovementsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Movimientos</a>
+                            <a href="#" id="cajaArqueoLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Arqueo Mensual</a>
                         </div>
                     </div>
                     <div class="menu-item" style="position:relative;">
@@ -48,7 +49,6 @@
                             <a href="#" id="listProductsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Productos</a>
                             <a href="#" id="listClientesLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Clientes</a>
                             <a href="#" id="listProveedoresLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Proveedores</a>
-                            <a href="#" id="listHistorialLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial de Precios</a>
                             <a href="#" id="listCuentasCorrientesLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Cuentas Corrientes</a>
                         </div>
                     </div>
@@ -233,7 +233,7 @@
                     <div id="noSalesMessage" style="display: none; text-align: center; padding: 20px; color: #64748b; font-size: 1.1rem; background: #f8fafc; border-radius: 8px; margin-bottom: 20px;">
                         No hay ventas registradas para la fecha seleccionada
                     </div>
-                    <table id="salesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Estado Entrega</th><th>Tipo Pago</th><th>Vendedor</th></tr></thead><tbody></tbody></table>
+                    <table id="salesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Estado Entrega</th><th>Tipo Pago</th><th>Vendedor</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
             </div>
         </section>
@@ -253,7 +253,10 @@
         <!-- Listas: Productos -->
         <section class="dashboard-section" id="listProductsSection" style="display:none;">
             <div class="dashboard-container">
-                <h1>Lista de Productos</h1>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h1 style="margin:0;">Lista de Productos</h1>
+                    <button type="button" id="listProductNewBtn" class="auth-btn" style="background:#10b981; width:auto; padding:12px 20px;">+ Nuevo Producto</button>
+                </div>
                 <div class="dashboard-card">
                     <table id="listProductsTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Descripción</th><th>Precio</th><th>Stock</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
@@ -263,7 +266,10 @@
         <!-- Listas: Clientes -->
         <section class="dashboard-section" id="listClientesSection" style="display:none;">
             <div class="dashboard-container">
-                <h1>Lista de Clientes</h1>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h1 style="margin:0;">Lista de Clientes</h1>
+                    <button type="button" id="listClienteNewBtn" class="auth-btn" style="background:#10b981; width:auto; padding:12px 20px;">+ Nuevo Cliente</button>
+                </div>
                 <div class="dashboard-card">
                     <table id="listClientesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Límite CC</th><th>Disponible</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
@@ -273,7 +279,10 @@
         <!-- Listas: Proveedores -->
         <section class="dashboard-section" id="listProveedoresSection" style="display:none;">
             <div class="dashboard-container">
-                <h1>Lista de Proveedores</h1>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h1 style="margin:0;">Lista de Proveedores</h1>
+                    <button type="button" id="listProveedorNewBtn" class="auth-btn" style="background:#10b981; width:auto; padding:12px 20px;">+ Nuevo Proveedor</button>
+                </div>
                 <div class="dashboard-card">
                     <table id="listProveedoresTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
                 </div>
@@ -352,24 +361,7 @@
             </div>
         </section>
 
-        <!-- Stock: Ingresar producto -->
-        <section class="dashboard-section" id="addProductSection" style="display:none;">
-            <div class="dashboard-container">
-                <h1 style="text-align: center;">Ingresar Producto</h1>
-                <div class="dashboard-card" style="max-width:600px;margin:0 auto;background:linear-gradient(120deg,#fef9c3 0%,#fef3c7 100%);box-shadow:0 4px 18px rgba(251,191,36,0.10);border:2px solid #fde68a;">
-                    <form id="addProductForm">
-                        <div class="form-group"><label>Nombre</label><input name="nombre" required></div>
-                        <div class="form-group"><label>Descripcion</label><input name="descripcion"></div>
-                        <div class="form-group"><label>Precio</label><input name="precio" type="number" step="0.01" required></div>
-                        <div class="form-group"><label>Stock</label><input name="stock" type="number" required></div>
-                        <div class="form-group"><label>Proveedor</label><select name="proveedor_id" id="addProductProveedorSelect"><option value="">-- Seleccionar proveedor (opcional) --</option></select></div>
-                        <button type="submit" class="auth-btn">Agregar</button>
-                    </form>
-                </div>
-            </div>
-        </section>
-
-        <!-- Stock: Reportes -->
+        <!-- Utilidades: Reportes -->
         <section class="dashboard-section" id="stockReportsSection" style="display:none;">
             <div class="dashboard-container">
                 <h1 style="text-align: center;">Reportes de Stock</h1>
@@ -506,6 +498,53 @@
                             <button class="auth-btn" type="submit">Registrar Movimiento</button>
                         </form>
                     </div>
+
+                    <!-- Arqueo mensual panel -->
+                    <div id="cajaArqueoPanel" class="caja-panel" style="display:none;">
+                        <h3>Arqueo Mensual</h3>
+                        <div class="form-group">
+                            <label for="arqueoMesSelect">Mes (cierre el día 25)</label>
+                            <input type="month" id="arqueoMesSelect" />
+                        </div>
+                        <div id="arqueoResumen" style="margin-top:20px;display:none;">
+                            <div class="caja-summary-grid">
+                                <div class="summary-box">
+                                    <span class="summary-label">Aperturas</span>
+                                    <span class="summary-value" id="arqueoAperturas">$0.00</span>
+                                </div>
+                                <div class="summary-box">
+                                    <span class="summary-label">Entradas</span>
+                                    <span class="summary-value" id="arqueoEntradas">$0.00</span>
+                                </div>
+                                <div class="summary-box">
+                                    <span class="summary-label">Salidas</span>
+                                    <span class="summary-value" id="arqueoSalidas">$0.00</span>
+                                </div>
+                                <div class="summary-box">
+                                    <span class="summary-label">Neto Mov.</span>
+                                    <span class="summary-value" id="arqueoNeto">$0.00</span>
+                                </div>
+                                <div class="summary-box">
+                                    <span class="summary-label">Saldo Esperado</span>
+                                    <span class="summary-value" id="arqueoEsperado">$0.00</span>
+                                </div>
+                                <div class="summary-box">
+                                    <span class="summary-label">Cierres</span>
+                                    <span class="summary-value" id="arqueoCierres">$0.00</span>
+                                </div>
+                            </div>
+                            <h4 style="margin:24px 0 8px">Cajas del período</h4>
+                            <table id="arqueoCajasTable" style="width:100%;border-collapse:collapse;">
+                                <thead>
+                                    <tr><th>Fecha</th><th>Apertura</th><th>Cierre</th></tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                            <div id="arqueoDiferencia" style="margin-top:12px;color:#64748b;font-weight:600"></div>
+                        </div>
+                        <div id="arqueoLoading" style="display:none;margin-top:12px;color:#64748b;">Cargando arqueo...</div>
+                        <div id="arqueoError" style="display:none;margin-top:12px;color:#dc2626;font-weight:600;"></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -565,6 +604,44 @@
                 <div style="display:flex;gap:8px;margin-top:12px;">
                     <button type="submit" class="auth-btn">Guardar</button>
                     <button type="button" id="cancelEditClienteBtn" class="auth-btn" style="background:#ef4444;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Producto -->
+    <div id="productoModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>Nuevo Producto</h3>
+            <form id="productoModalForm">
+                <div class="form-group"><label>Nombre</label><input name="nombre" id="productoNombre" required></div>
+                <div class="form-group"><label>Descripción</label><input name="descripcion" id="productoDescripcion"></div>
+                <div class="form-group"><label>Precio</label><input name="precio" id="productoPrecio" type="number" step="0.01" required></div>
+                <div class="form-group"><label>Stock</label><input name="stock" id="productoStock" type="number" required></div>
+                <div class="form-group"><label>Proveedor</label><select name="proveedor_id" id="productoProveedorSelect"><option value="">-- Seleccionar proveedor (opcional) --</option></select></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="button" id="productoModalCreate" class="auth-btn">Crear producto</button>
+                    <button type="button" id="productoModalCancel" class="auth-btn" style="background:#ef4444;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Proveedor -->
+    <div id="proveedorModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>Nuevo Proveedor</h3>
+            <form id="proveedorModalForm">
+                <div class="form-group"><label>Nombre</label><input name="nombre" id="proveedorNombre" required></div>
+                <div class="form-group"><label>Contacto</label><input name="contacto" id="proveedorContacto" required></div>
+                <div class="form-group"><label>Teléfono</label><input name="telefono" id="proveedorTelefono"></div>
+                <div class="form-group"><label>Email</label><input name="email" id="proveedorEmail" type="email"></div>
+                <div class="form-group"><label>Dirección</label><input name="direccion" id="proveedorDireccion"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="button" id="proveedorModalCreate" class="auth-btn">Crear proveedor</button>
+                    <button type="button" id="proveedorModalCancel" class="auth-btn" style="background:#ef4444;">Cancelar</button>
                 </div>
             </form>
         </div>
@@ -656,6 +733,20 @@
         </div>
     </div>
 
-    <script src="script.js?v=2"></script>
+    <!-- Modal: Gestionar Pagos de Venta -->
+    <div id="managePagosModal" class="modal" style="display:none;">
+        <div class="modal-overlay" onclick="document.getElementById('managePagosModal').style.display='none'"></div>
+        <div class="modal-content" style="max-width:720px;">
+            <h3>Gestionar Pagos</h3>
+            <div id="managePagosBody">
+                <!-- Contenido dinámico -->
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+                <button type="button" class="auth-btn" style="background:#64748b" onclick="document.getElementById('managePagosModal').style.display='none'">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=12"></script>
 </body>
 </html>

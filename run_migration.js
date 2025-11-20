@@ -19,7 +19,13 @@ const queries = [
   "ALTER TABLE proveedores ADD COLUMN estado ENUM('activo', 'inactivo') DEFAULT 'activo' AFTER direccion",
   
   // Actualizar proveedores existentes
-  "UPDATE proveedores SET estado = 'activo' WHERE estado IS NULL"
+  "UPDATE proveedores SET estado = 'activo' WHERE estado IS NULL",
+
+  // Agregar columna estado a pagos
+  "ALTER TABLE pagos ADD COLUMN estado ENUM('pendiente','procesado','cancelado','anulado') DEFAULT 'procesado' AFTER monto",
+
+  // Agregar columna pago_id a movimientos_caja (sin FK por ahora)
+  "ALTER TABLE movimientos_caja ADD COLUMN pago_id INT NULL AFTER caja_id"
 ];
 
 console.log('🚀 Iniciando migración de estados...\n');
@@ -33,9 +39,13 @@ async function runMigration() {
       await new Promise((resolve, reject) => {
         pool.query(query, (error, results) => {
           if (error) {
-            // Ignorar error si la columna ya existe
-            if (error.code === 'ER_DUP_FIELDNAME' || error.message.includes('Duplicate column')) {
-              console.log(`   ⚠️  Columna ya existe, continuando...`);
+            // Ignorar errores comunes de migración
+            if (error.code === 'ER_DUP_FIELDNAME' || 
+                error.message.includes('Duplicate column') ||
+                error.code === 'ER_DUP_KEYNAME' ||
+                error.message.includes('Duplicate key name') ||
+                error.code === 'ER_CANT_DROP_FIELD_OR_KEY') {
+              console.log(`   ⚠️  Ya existe, continuando...`);
               resolve();
             } else {
               reject(error);
@@ -57,30 +67,29 @@ async function runMigration() {
   console.log('Verificando cambios...\n');
   
   // Verificar cambios
-  pool.query('DESCRIBE productos', (err, results) => {
+  pool.query('DESCRIBE pagos', (err, results) => {
     if (!err) {
       const estadoCol = results.find(r => r.Field === 'estado');
       if (estadoCol) {
-        console.log('✅ productos.estado:', estadoCol.Type);
+        console.log('✅ pagos.estado:', estadoCol.Type);
+      } else {
+        console.log('❌ pagos.estado: NO ENCONTRADA');
       }
+    } else {
+      console.log('❌ Error al verificar pagos:', err.message);
     }
   });
   
-  pool.query('DESCRIBE clientes', (err, results) => {
+  pool.query('DESCRIBE movimientos_caja', (err, results) => {
     if (!err) {
-      const estadoCol = results.find(r => r.Field === 'estado');
-      if (estadoCol) {
-        console.log('✅ clientes.estado:', estadoCol.Type);
+      const pagoIdCol = results.find(r => r.Field === 'pago_id');
+      if (pagoIdCol) {
+        console.log('✅ movimientos_caja.pago_id:', pagoIdCol.Type);
+      } else {
+        console.log('❌ movimientos_caja.pago_id: NO ENCONTRADA');
       }
-    }
-  });
-  
-  pool.query('DESCRIBE proveedores', (err, results) => {
-    if (!err) {
-      const estadoCol = results.find(r => r.Field === 'estado');
-      if (estadoCol) {
-        console.log('✅ proveedores.estado:', estadoCol.Type);
-      }
+    } else {
+      console.log('❌ Error al verificar movimientos_caja:', err.message);
     }
     
     setTimeout(() => {

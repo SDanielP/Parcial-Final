@@ -1,5 +1,6 @@
 
 // Clean single-file frontend script for Negocio admin system
+console.log('🚀 Script cargado correctamente')
 
 const API_BASE_URL = 'http://localhost:3000/api'
 
@@ -64,6 +65,14 @@ let clienteModal = null
 let clienteModalForm = null
 let clienteModalCreate = null
 let clienteModalCancel = null
+let proveedorModal = null
+let proveedorModalForm = null
+let proveedorModalCreate = null
+let proveedorModalCancel = null
+let productoModal = null
+let productoModalForm = null
+let productoModalCreate = null
+let productoModalCancel = null
 
 function init() {
   const ud = localStorage.getItem('userData')
@@ -110,17 +119,16 @@ function attachListeners(){
   document.getElementById('productsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.productsSection); loadProducts() })
   document.getElementById('pedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('pedidosSection')); loadPedidos() })
   document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('hojaRutaSection')); loadHojaRuta() })
-  document.getElementById('addProductLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); showSection(refs.addProductSection); await loadProveedoresInAddProductForm() })
-  document.getElementById('stockReportsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); generateLowStockReport() })
+  document.getElementById('stockReportsLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); await generateLowStockReport() })
   document.getElementById('stockPedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('stockPedidosSection')); openStockPedidos() })
   // Caja submenu links -> show specific internal panels
   document.getElementById('cajaOpenLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('apertura') })
   document.getElementById('cajaCloseLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('cierre') })
   document.getElementById('cajaMovementsLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('movimientos') })
+  document.getElementById('cajaArqueoLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('arqueo') })
 
   refs.loginForm?.addEventListener('submit', handleLogin)
   refs.registerForm?.addEventListener('submit', handleRegister)
-  refs.addProductForm?.addEventListener('submit', handleAddProduct)
   refs.newSaleForm?.addEventListener('submit', handleNewSale)
   // Envío / clientes inline UI
   const envioCheckbox = document.getElementById('envioCheckbox')
@@ -128,11 +136,22 @@ function attachListeners(){
   const clienteSearchInput = document.getElementById('clienteSearchInput')
   const clienteSearchResults = document.getElementById('clienteSearchResults')
   const clienteNewBtn = document.getElementById('clienteNewBtn')
+  const listClienteNewBtn = document.getElementById('listClienteNewBtn')
+  const listProveedorNewBtn = document.getElementById('listProveedorNewBtn')
+  const listProductNewBtn = document.getElementById('listProductNewBtn')
   // modal elements
   clienteModal = document.getElementById('clienteModal')
   clienteModalForm = document.getElementById('clienteModalForm')
   clienteModalCreate = document.getElementById('clienteModalCreate')
   clienteModalCancel = document.getElementById('clienteModalCancel')
+  proveedorModal = document.getElementById('proveedorModal')
+  proveedorModalForm = document.getElementById('proveedorModalForm')
+  proveedorModalCreate = document.getElementById('proveedorModalCreate')
+  proveedorModalCancel = document.getElementById('proveedorModalCancel')
+  productoModal = document.getElementById('productoModal')
+  productoModalForm = document.getElementById('productoModalForm')
+  productoModalCreate = document.getElementById('productoModalCreate')
+  productoModalCancel = document.getElementById('productoModalCancel')
   if (envioCheckbox){ envioCheckbox.addEventListener('change', ()=>{ toggleEnvioUI(envioCheckbox.checked) }) }
   // Live search while typing (debounced)
   if (clienteSearchInput) {
@@ -143,8 +162,15 @@ function attachListeners(){
     })
   }
   if (clienteNewBtn) clienteNewBtn.addEventListener('click', ()=>{ openClienteModal() })
+  if (listClienteNewBtn) listClienteNewBtn.addEventListener('click', ()=>{ openClienteModal() })
   if (clienteModalCancel) clienteModalCancel.addEventListener('click', ()=>{ closeClienteModal() })
   if (clienteModalCreate) clienteModalCreate.addEventListener('click', async ()=>{ await createClienteFromModal() })
+  if (listProveedorNewBtn) listProveedorNewBtn.addEventListener('click', ()=>{ openProveedorModal() })
+  if (proveedorModalCancel) proveedorModalCancel.addEventListener('click', ()=>{ closeProveedorModal() })
+  if (proveedorModalCreate) proveedorModalCreate.addEventListener('click', async ()=>{ await createProveedorFromModal() })
+  if (listProductNewBtn) listProductNewBtn.addEventListener('click', async ()=>{ await openProductoModal() })
+  if (productoModalCancel) productoModalCancel.addEventListener('click', ()=>{ closeProductoModal() })
+  if (productoModalCreate) productoModalCreate.addEventListener('click', async ()=>{ await createProductoFromModal() })
   refs.addSaleItemBtn?.addEventListener('click', (e)=>{ e.preventDefault(); ensureProductSearch(); refs.productSearchInput?.focus(); renderSearchResults('') })
   refs.openCajaForm?.addEventListener('submit', handleOpenCaja)
   refs.closeCajaForm?.addEventListener('submit', handleCloseCaja)
@@ -230,7 +256,7 @@ function attachListeners(){
   })
 }
 
-// Show specific panel inside cajaSection: 'apertura' | 'cierre' | 'movimientos'
+// Show specific panel inside cajaSection: 'apertura' | 'cierre' | 'movimientos' | 'arqueo'
 async function showCajaPanel(panel){
   // ensure caja section is visible
   showSection(refs.cajaSection)
@@ -241,10 +267,12 @@ async function showCajaPanel(panel){
   const apertura = document.getElementById('cajaAperturaPanel')
   const cierre = document.getElementById('cajaCierrePanel')
   const movimientos = document.getElementById('cajaMovimientosPanel')
+  const arqueo = document.getElementById('cajaArqueoPanel')
   
   if (apertura) apertura.style.display = 'none'
   if (cierre) cierre.style.display = 'none'
   if (movimientos) movimientos.style.display = 'none'
+  if (arqueo) arqueo.style.display = 'none'
   
   if (panel === 'apertura' && apertura) apertura.style.display = 'block'
   if (panel === 'cierre' && cierre) cierre.style.display = 'block'
@@ -261,6 +289,10 @@ async function showCajaPanel(panel){
         refs.movementsList.innerHTML = '<div class="dashboard-card" style="text-align: center; padding: 20px;">No hay caja abierta</div>'
       }
     }
+  }
+  if (panel === 'arqueo' && arqueo) {
+    arqueo.style.display = 'block'
+    initMonthlyArqueo()
   }
 }
 
@@ -499,6 +531,75 @@ async function getCajaActual(){
 
 async function getUltimaCaja(){
   try{ const res = await fetch(`${API_BASE_URL}/caja/ultima`); const data = await res.json(); return data.caja || null }catch(err){ console.error('No se pudo obtener ultima caja', err); return null }
+}
+
+// Arqueo mensual helpers
+function initMonthlyArqueo(){
+  const input = document.getElementById('arqueoMesSelect')
+  if (!input) return
+  if (!input.value){
+    const d = new Date()
+    input.value = d.toISOString().slice(0,7) // YYYY-MM
+  }
+  loadArqueoMensual(input.value)
+  // evitar múltiples listeners
+  if (!input.dataset.listener){
+    input.addEventListener('change', ()=>{ if (input.value) loadArqueoMensual(input.value) })
+    input.dataset.listener = '1'
+  }
+}
+
+async function loadArqueoMensual(mes){
+  const loading = document.getElementById('arqueoLoading')
+  const errorDiv = document.getElementById('arqueoError')
+  const resumenDiv = document.getElementById('arqueoResumen')
+  if (loading) loading.style.display = 'block'
+  if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = '' }
+  if (resumenDiv) resumenDiv.style.display = 'none'
+  try{
+    const res = await fetch(`${API_BASE_URL}/caja/arqueo-mensual?mes=${encodeURIComponent(mes)}`)
+    const data = await res.json()
+    if (!res.ok){ throw new Error(data.error || 'Error obteniendo arqueo') }
+    console.log('Arqueo mensual data:', data)
+    // Rellenar resumen
+    if (resumenDiv){ resumenDiv.style.display = 'block' }
+    const fmt = v => `$${Number(v||0).toFixed(2)}`
+    const r = data.resumen || {}
+    const set = (id,val)=>{ const el = document.getElementById(id); if (el) el.textContent = fmt(val) }
+    set('arqueoAperturas', r.total_aperturas)
+    set('arqueoEntradas', r.entradas)
+    set('arqueoSalidas', r.salidas)
+    set('arqueoNeto', r.neto_movimientos)
+    set('arqueoEsperado', r.saldo_esperado)
+    set('arqueoCierres', r.total_cierres)
+    const diffEl = document.getElementById('arqueoDiferencia')
+    if (diffEl){
+      if (r.diferencia_cierres == null){ diffEl.textContent = 'Cierres aún no registrados completamente.' }
+      else {
+        const diff = Number(r.diferencia_cierres)
+        diffEl.textContent = `Diferencia cierres vs saldo esperado: ${fmt(diff)}`
+        diffEl.style.color = Math.abs(diff) < 0.01 ? '#065f46' : (diff > 0 ? '#dc2626' : '#e11d48')
+      }
+    }
+    // tabla de cajas
+    const tbody = document.querySelector('#arqueoCajasTable tbody')
+    if (tbody){
+      tbody.innerHTML = ''
+      const cajas = Array.isArray(data.cajas) ? data.cajas : []
+      cajas.forEach(c => {
+        const tr = document.createElement('tr')
+        const estadoLabel = c.estado === 'abierta' ? 'Abierta' : 'Cerrada'
+        tr.innerHTML = `<td>${c.fecha}</td><td style="text-align:right;">${fmt(c.apertura)}</td><td style="text-align:right;">${c.cierre!=null?fmt(c.cierre):'--'}</td><td>${estadoLabel}</td>`
+        tbody.appendChild(tr)
+      })
+      if (cajas.length===0){ tbody.innerHTML = '<tr><td colspan="4" style="padding:10px;text-align:center;color:#64748b">No hay cajas en el período</td></tr>' }
+    }
+  }catch(err){
+    console.error('Arqueo mensual error', err)
+    if (errorDiv){ errorDiv.style.display = 'block'; errorDiv.textContent = err.message || 'Error' }
+  }finally{
+    if (loading) loading.style.display = 'none'
+  }
 }
 
 function ensureSaleTotalElement(){
@@ -881,24 +982,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
     })
   }
 })
-
-async function handleAddProduct(e){
-  e.preventDefault()
-  const fd = new FormData(refs.addProductForm)
-  const proveedorId = fd.get('proveedor_id')
-  const payload = { 
-    nombre: fd.get('nombre'), 
-    descripcion: fd.get('descripcion'), 
-    precio: Number(fd.get('precio')), 
-    stock: Number(fd.get('stock')),
-    proveedor_id: proveedorId && proveedorId !== '' ? Number(proveedorId) : null
-  }
-  try{
-    const res = await fetch(`${API_BASE_URL}/productos`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-    const data = await res.json()
-    if (res.ok){ showMessage('Producto agregado','success'); refs.addProductForm.reset(); loadProducts() } else showMessage(data.error || 'Error al agregar producto','error')
-  }catch(err){ console.error(err); showMessage('Error de red','error') }
-}
 
 // Sales - Payment management
 function addPaymentRow() {
@@ -1385,11 +1468,16 @@ async function createClienteFromModal(){
     const res = await fetch(`${API_BASE_URL}/clientes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
     if (res.ok){
-      // seleccionar el nuevo cliente para la venta
-      selectedCliente = Object.assign({ id: data.id }, payload)
       closeClienteModal()
-      renderSelectedCliente(selectedCliente)
-      showMessage('Cliente creado. Ahora puedes buscarlo y añadirlo a la venta','success')
+      showMessage('Cliente creado exitosamente','success')
+      // Reload clientes list if we're on that section
+      if (refs.listClientesSection && refs.listClientesSection.style.display !== 'none'){
+        loadClientes()
+      } else {
+        // If we're in nueva venta, select the cliente
+        selectedCliente = Object.assign({ id: data.id }, payload)
+        renderSelectedCliente(selectedCliente)
+      }
     } else {
       showMessage(data.error || 'Error creando cliente','error')
     }
@@ -1416,6 +1504,90 @@ async function createClienteFromForm(form){
       showMessage(data.error || 'Error creando cliente','error')
     }
   }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+// Proveedor Modal functions
+function openProveedorModal(){ if (!proveedorModal) return; proveedorModal.style.display = 'flex' }
+function closeProveedorModal(){ if (!proveedorModal) return; proveedorModal.style.display = 'none'; if (proveedorModalForm) proveedorModalForm.reset() }
+
+async function createProveedorFromModal(){
+  if (!proveedorModalForm) return
+  const fd = new FormData(proveedorModalForm)
+  const nombre = fd.get('nombre')
+  const contacto = fd.get('contacto')
+  if (!nombre || !contacto) return showMessage('Nombre y contacto son requeridos','error')
+  try{
+    const payload = { nombre, contacto, telefono: fd.get('telefono')||'', email: fd.get('email')||'', direccion: fd.get('direccion')||'' }
+    const res = await fetch(`${API_BASE_URL}/proveedores`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (res.ok){
+      closeProveedorModal()
+      showMessage('Proveedor creado exitosamente','success')
+      // Reload proveedores list if we're on that section
+      if (refs.listProveedoresSection && refs.listProveedoresSection.style.display !== 'none'){
+        loadProveedores()
+      }
+    } else {
+      showMessage(data.error || 'Error creando proveedor','error')
+    }
+  }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+// Producto Modal functions
+async function openProductoModal(){ 
+  if (!productoModal) return
+  await loadProveedoresInProductoModal()
+  productoModal.style.display = 'flex'
+}
+function closeProductoModal(){ if (!productoModal) return; productoModal.style.display = 'none'; if (productoModalForm) productoModalForm.reset() }
+
+async function createProductoFromModal(){
+  if (!productoModalForm) return
+  const fd = new FormData(productoModalForm)
+  const nombre = fd.get('nombre')
+  const precio = fd.get('precio')
+  const stock = fd.get('stock')
+  if (!nombre || !precio || !stock) return showMessage('Nombre, precio y stock son requeridos','error')
+  try{
+    const payload = { 
+      nombre, 
+      descripcion: fd.get('descripcion')||'', 
+      precio: parseFloat(precio), 
+      stock: parseInt(stock),
+      proveedor_id: fd.get('proveedor_id') || null
+    }
+    const res = await fetch(`${API_BASE_URL}/productos`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (res.ok){
+      closeProductoModal()
+      showMessage('Producto creado exitosamente','success')
+      // Reload products list if we're on that section
+      if (refs.listProductsSection && refs.listProductsSection.style.display !== 'none'){
+        loadProducts()
+      }
+    } else {
+      showMessage(data.error || 'Error creando producto','error')
+    }
+  }catch(err){ console.error(err); showMessage('Error de red','error') }
+}
+
+async function loadProveedoresInProductoModal(){
+  try{
+    const res = await fetch(`${API_BASE_URL}/proveedores`)
+    if (!res.ok) return
+    const data = await res.json()
+    const select = document.getElementById('productoProveedorSelect')
+    if (!select) return
+    select.innerHTML = '<option value="">-- Seleccionar proveedor (opcional) --</option>'
+    ;(data.proveedores || []).forEach(p => {
+      if (p.estado === 'activo') {
+        const opt = document.createElement('option')
+        opt.value = p.id
+        opt.textContent = p.nombre
+        select.appendChild(opt)
+      }
+    })
+  }catch(err){ console.error(err) }
 }
 
 // Pedidos: carga y print
@@ -1453,19 +1625,6 @@ async function loadProveedores(){
     const data = await res.json()
     return data.proveedores || []
   }catch(err){ console.error('Error cargando proveedores', err); return [] }
-}
-
-async function loadProveedoresInAddProductForm(){
-  const select = document.getElementById('addProductProveedorSelect')
-  if (!select) return
-  const proveedores = await loadProveedores()
-  select.innerHTML = '<option value="">-- Seleccionar proveedor (opcional) --</option>'
-  proveedores.forEach(p => {
-    const opt = document.createElement('option')
-    opt.value = p.id
-    opt.textContent = p.nombre
-    select.appendChild(opt)
-  })
 }
 
 async function openStockPedidos(){
@@ -2158,13 +2317,80 @@ function computeSaleTotal(){
   }
 }
 
+// Gestionar pagos de una venta - definida antes de loadSales para que esté disponible
+async function openManagePagosModal(ventaId){
+  console.log('openManagePagosModal called with ventaId:', ventaId)
+  const modal = document.getElementById('managePagosModal')
+  const body = document.getElementById('managePagosBody')
+  console.log('Modal element:', modal, 'Body element:', body)
+  if (body) body.innerHTML = '<div style="padding:8px;color:#64748b">Cargando pagos...</div>'
+  if (modal) {
+    console.log('Opening modal...')
+    modal.style.display = 'flex'
+  } else {
+    console.error('Modal managePagosModal not found in DOM!')
+  }
+  try{
+    const res = await fetch(`${API_BASE_URL}/pagos?venta_id=${ventaId}`)
+    if (!res.ok){
+      const txt = await res.text().catch(()=> '')
+      if (body) body.innerHTML = `<div style="padding:8px;color:#dc2626">Error al cargar pagos: ${txt || res.statusText}</div>`
+      return
+    }
+    const data = await res.json()
+    const pagos = data.pagos || []
+    if (!body) return
+    if (pagos.length === 0){ body.innerHTML = '<div style="padding:8px;color:#64748b">No hay pagos para esta venta</div>' }
+    else {
+      const rows = pagos.map(pg => `
+        <tr>
+          <td>#${pg.id}</td>
+          <td>${pg.tipo_pago}</td>
+          <td style="text-align:right;">$${Number(pg.monto).toFixed(2)}</td>
+          <td>
+            <select data-pago-id="${pg.id}" class="select-estado-pago" style="padding:6px 10px;border-radius:8px;border:2px solid #e2e8f0;">
+              <option value="pendiente" ${pg.estado==='pendiente'?'selected':''}>Pendiente</option>
+              <option value="procesado" ${pg.estado==='procesado'?'selected':''}>Procesado</option>
+              <option value="cancelado" ${pg.estado==='cancelado'?'selected':''}>Cancelado</option>
+              <option value="anulado" ${pg.estado==='anulado'?'selected':''}>Anulado</option>
+            </select>
+          </td>
+        </tr>
+      `).join('')
+      body.innerHTML = `
+        <div style="margin-bottom:10px;color:#64748b">Venta #${ventaId}</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th>ID</th><th>Tipo</th><th>Monto</th><th>Estado</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="margin-top:8px;color:#64748b;font-size:0.9rem">Nota: Cancelado no impacta caja; Anulado registra salida equivalente.</div>
+      `
+    }
+
+    // listeners para cambios de estado
+    body.querySelectorAll('.select-estado-pago').forEach(sel => {
+      sel.addEventListener('change', async (ev) => {
+        const pagoId = ev.target.getAttribute('data-pago-id')
+        const nuevo = ev.target.value
+        try{
+          const r = await fetch(`${API_BASE_URL}/pagos/${pagoId}/estado`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado: nuevo }) })
+          const j = await r.json().catch(()=>({}))
+          if (!r.ok){ showMessage(j.error || 'No se pudo actualizar estado de pago','error') }
+          else { showMessage('Estado de pago actualizado','success'); loadSales(document.getElementById('salesDate')?.value || null); updateCajaMenuState() }
+        }catch(err){ console.error(err); showMessage('Error de red','error') }
+      })
+    })
+  }catch(err){ console.error(err); if (body) body.innerHTML = `<div style="padding:8px;color:#dc2626">Error cargando pagos: ${err.message||err}</div>` }
+}
+
 async function loadSales(date = null){
+  console.log('📊 loadSales called with date:', date)
   try {
     if (!refs.salesTable) return
     const tbody = refs.salesTable.querySelector('tbody')
     if (!tbody) return
 
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Cargando...</td></tr>'
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Cargando...</td></tr>'
 
     const res = await fetch(`${API_BASE_URL}/ventas`)
     if (!res.ok) {
@@ -2186,7 +2412,7 @@ async function loadSales(date = null){
     }
 
     if (salesToShow.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #64748b;">No hay ventas para mostrar</td></tr>'
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #64748b;">No hay ventas para mostrar</td></tr>'
       return
     }
 
@@ -2196,6 +2422,7 @@ async function loadSales(date = null){
     // Calcular el total de ventas
     let totalVentas = 0
 
+    console.log('Rendering', salesToShow.length, 'sales')
     salesToShow.forEach(sale => {
       const fecha = new Date(sale.fecha)
       const tr = document.createElement('tr')
@@ -2267,8 +2494,22 @@ async function loadSales(date = null){
         <td style="color: ${estadoColor}; font-weight: 500;">${estadoEntrega}</td>
         <td>${tipoPagoDisplay}</td>
         <td>${sale.vendedor || ''}</td>
+        <td><button class="auth-btn" data-venta-id="${sale.id}" data-action="gestionar-pagos" style="padding:8px 12px;">Pagos</button></td>
       `
       tbody.appendChild(tr)
+
+      // Bind direct click handler to ensure modal opens even if delegation fails
+      const manageBtn = tr.querySelector('button[data-action="gestionar-pagos"]')
+      if (manageBtn) {
+        console.log('Binding click handler to Pagos button for venta:', sale.id)
+        manageBtn.addEventListener('click', async (ev) => {
+          ev.preventDefault()
+          console.log('Pagos button clicked for venta:', sale.id)
+          await openManagePagosModal(sale.id)
+        })
+      } else {
+        console.warn('No se encontró botón Pagos para venta:', sale.id)
+      }
     })
 
     // Agregar fila de total
@@ -2278,7 +2519,7 @@ async function loadSales(date = null){
     trTotal.innerHTML = `
       <td colspan="2" style="text-align: right;">Total:</td>
       <td style="text-align: right;">$${totalVentas.toFixed(2)}</td>
-      <td colspan="3"></td>
+      <td colspan="4"></td>
     `
     tbody.appendChild(trTotal)
 
@@ -2287,28 +2528,55 @@ async function loadSales(date = null){
     showMessage('Error al cargar las ventas: ' + (err.message || ''), 'error')
     if (refs.salesTable) {
       const tbody = refs.salesTable.querySelector('tbody')
-      if (tbody) tbody.innerHTML = ''
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;">Error cargando ventas</td></tr>'
     }
   }
 }
 
-function generateLowStockReport(){
-  const lows = productsCache.filter(p=>p.stock<=5)
+// Gestionar pagos de una venta (delegation backup)
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action="gestionar-pagos"]')
+  if (!btn) return
+  console.log('Delegation: Pagos button clicked (delegated)', btn)
+  const ventaId = btn.getAttribute('data-venta-id')
+  if (!ventaId) return
+  e.preventDefault()
+  await openManagePagosModal(Number(ventaId))
+})
+
+// (Función openManagePagosModal movida antes de loadSales)
+
+async function generateLowStockReport(){
   if (!refs.lowStockReport) return;
   const tbody = refs.lowStockReport.querySelector('tbody');
   if (!tbody) return;
-  if (lows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#b45309;padding:18px 0;">No hay productos con bajo stock.</td></tr>';
-    return;
+  
+  // Load all products if cache is empty or we need fresh data
+  try {
+    const res = await fetch(`${API_BASE_URL}/productos`)
+    const data = await res.json()
+    const allProducts = data.productos || []
+    
+    // Filter products with stock <= 5 (including both active and inactive)
+    const lows = allProducts.filter(p => p.stock <= 5)
+    
+    if (lows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#b45309;padding:18px 0;">No hay productos con bajo stock.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = lows.map(p => `
+      <tr>
+        <td style="padding:8px 6px;">${p.nombre}</td>
+        <td style="padding:8px 6px;">${p.descripcion||''}</td>
+        <td style="padding:8px 6px;text-align:right;">$${Number(p.precio).toFixed(2)}</td>
+        <td style="padding:8px 6px;text-align:right;font-weight:600;color:#b91c1c;">${p.stock}</td>
+      </tr>
+    `).join('');
+  } catch(err) {
+    console.error(err)
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:18px 0;">Error al cargar productos</td></tr>';
   }
-  tbody.innerHTML = lows.map(p => `
-    <tr>
-      <td style="padding:8px 6px;">${p.nombre}</td>
-      <td style="padding:8px 6px;">${p.descripcion||''}</td>
-      <td style="padding:8px 6px;text-align:right;">$${Number(p.precio).toFixed(2)}</td>
-      <td style="padding:8px 6px;text-align:right;font-weight:600;color:#b91c1c;">${p.stock}</td>
-    </tr>
-  `).join('');
 }
 
 // Caja
@@ -2400,8 +2668,7 @@ async function loadMovements(caja_id){
     })
     table.appendChild(list)
     refs.movementsList.appendChild(table)
-
-    // Log para depuración
+    
     console.log('Movimientos cargados:', data.movimientos?.length || 0, 'items')
 
   }catch(err){ console.error('Error en loadMovements:', err); showMessage('No se pudieron cargar movimientos','error') }
