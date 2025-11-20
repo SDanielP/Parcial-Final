@@ -192,6 +192,7 @@ function attachListeners(){
   document.getElementById('listClientesLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listClientesSection')); loadListClientes(); closeAllSubmenus(); })
   document.getElementById('listProveedoresLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listProveedoresSection')); loadListProveedores(); closeAllSubmenus(); })
   document.getElementById('listHistorialLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listHistorialSection')); initHistorialSection(); closeAllSubmenus(); })
+  document.getElementById('listCuentasCorrientesLink')?.addEventListener('click', (e)=>{ e.preventDefault(); initCuentasCorrientesSection(); closeAllSubmenus(); })
 
   // Admin menu toggle
   refs.adminUsersBtn?.addEventListener('click', (e)=>{
@@ -300,7 +301,7 @@ function closeAllModals(){
 function hideAllSections(){
   // Hide known sections
   closeAllModals() // Close any open modals when changing sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection','listProductsSection','listClientesSection','listProveedoresSection','listHistorialSection']
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection','listProductsSection','listClientesSection','listProveedoresSection','listHistorialSection','listCuentasCorrientesSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
 function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded(); initPaymentSystem() } }
@@ -838,7 +839,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
       const payload = {
         nombre: document.getElementById('editClienteNombre').value,
         telefono: document.getElementById('editClienteTelefono').value,
-        direccion: document.getElementById('editClienteDireccion').value
+        direccion: document.getElementById('editClienteDireccion').value,
+        limite_cuenta_corriente: Number(document.getElementById('editClienteLimiteCC').value) || 0
       }
       try{
         const res = await fetch(`${API_BASE_URL}/clientes/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
@@ -922,17 +924,26 @@ function addPaymentRow() {
   row.style.border = '1px solid #e2e8f0'
   
   row.innerHTML = `
-    <select required style="padding:10px;font-weight:500;">
+    <select required style="padding:10px;font-weight:500;" class="payment-type-select">
       <option value="efectivo">💵 Efectivo</option>
       <option value="tarjeta">💳 Tarjeta</option>
       <option value="qr">📱 QR</option>
       <option value="transferencia">🏦 Transferencia</option>
+      <option value="cuenta_corriente">📋 Cuenta Corriente</option>
     </select>
     <input type="number" step="0.01" min="0" placeholder="Monto" required style="padding:10px;text-align:right;">
     <button type="button" class="remove-payment-btn" style="background:#ef4444;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:600;">✕</button>
   `
   
   container.appendChild(row)
+  
+  // Event listener para cambio de tipo de pago
+  const selectPayment = row.querySelector('.payment-type-select')
+  selectPayment.addEventListener('change', (e) => {
+    if (e.target.value === 'cuenta_corriente') {
+      handleCuentaCorrienteSelection(row)
+    }
+  })
   
   // Event listener para eliminar
   row.querySelector('.remove-payment-btn').addEventListener('click', () => {
@@ -951,6 +962,140 @@ function addPaymentRow() {
   }
   
   updatePaymentButton()
+}
+
+function handleCuentaCorrienteSelection(row) {
+  // Buscar si ya existe un contenedor de cliente para este row
+  let clienteContainer = row.querySelector('.cc-cliente-container')
+  if (clienteContainer) return // Ya existe
+  
+  // Crear contenedor para selección de cliente
+  clienteContainer = document.createElement('div')
+  clienteContainer.className = 'cc-cliente-container'
+  clienteContainer.style.gridColumn = '1 / -1'
+  clienteContainer.style.marginTop = '10px'
+  clienteContainer.style.padding = '10px'
+  clienteContainer.style.background = '#fef3c7'
+  clienteContainer.style.borderRadius = '6px'
+  clienteContainer.style.border = '2px solid #fbbf24'
+  
+  clienteContainer.innerHTML = `
+    <div style="margin-bottom:8px;font-weight:600;color:#92400e;">Seleccionar Cliente para Cuenta Corriente:</div>
+    <input type="text" class="cc-cliente-search" placeholder="Buscar cliente..." style="width:100%;padding:8px;margin-bottom:8px;">
+    <div class="cc-cliente-results" style="max-height:150px;overflow-y:auto;"></div>
+    <input type="hidden" class="cc-cliente-id">
+  `
+  
+  row.appendChild(clienteContainer)
+  
+  const searchInput = clienteContainer.querySelector('.cc-cliente-search')
+  const resultsDiv = clienteContainer.querySelector('.cc-cliente-results')
+  
+  let debounceTimer = null
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      searchClientesForCC(e.target.value, resultsDiv, clienteContainer)
+    }, 250)
+  })
+}
+
+async function searchClientesForCC(query, resultsDiv, container) {
+  try {
+    const term = (query || '').trim()
+    const url = term ? `${API_BASE_URL}/clientes?q=${encodeURIComponent(term)}` : `${API_BASE_URL}/clientes`
+    const res = await fetch(url)
+    if (!res.ok) return showMessage('Error buscando clientes', 'error')
+    const data = await res.json()
+    
+    // Filtrar solo clientes activos (no deudores ni inactivos para nueva venta)
+    const clientesActivos = (data.clientes || []).filter(c => c.estado === 'activo')
+    
+    resultsDiv.innerHTML = ''
+    if (clientesActivos.length === 0) {
+      resultsDiv.innerHTML = '<div style="padding:8px;color:#64748b;text-align:center;">No se encontraron clientes activos</div>'
+      return
+    }
+    
+    clientesActivos.forEach(c => {
+      const div = document.createElement('div')
+      div.style.padding = '8px'
+      div.style.cursor = 'pointer'
+      div.style.borderBottom = '1px solid #e2e8f0'
+      div.style.background = 'white'
+      div.innerHTML = `
+        <strong>${escapeHtml(c.nombre)}</strong><br>
+        <small style="color:#64748b;">Límite CC: $${Number(c.limite_cuenta_corriente || 0).toFixed(2)}</small>
+      `
+      div.addEventListener('click', () => {
+        selectClienteForCC(c, container)
+      })
+      resultsDiv.appendChild(div)
+    })
+  } catch(err) {
+    console.error(err)
+    showMessage('Error buscando clientes', 'error')
+  }
+}
+
+async function selectClienteForCC(cliente, container) {
+  const hiddenInput = container.querySelector('.cc-cliente-id')
+  const resultsDiv = container.querySelector('.cc-cliente-results')
+  const searchInput = container.querySelector('.cc-cliente-search')
+  
+  hiddenInput.value = cliente.id
+  searchInput.value = cliente.nombre
+  searchInput.disabled = true
+  searchInput.style.background = '#f1f5f9'
+  
+  // Obtener saldo usado
+  try {
+    const res = await fetch(`${API_BASE_URL}/cuentas-corrientes/cliente/${cliente.id}`)
+    const data = await res.json()
+    const saldoUsado = Number(data.saldo_total || 0)
+    const limite = Number(cliente.limite_cuenta_corriente || 0)
+    const disponible = limite - saldoUsado
+    
+    resultsDiv.innerHTML = `
+      <div style="padding:8px;background:white;border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <strong>${escapeHtml(cliente.nombre)}</strong><br>
+          <small>Límite: $${limite.toFixed(2)} | Usado: $${saldoUsado.toFixed(2)}</small><br>
+          <small style="color:${disponible > 0 ? '#10b981' : '#ef4444'};font-weight:bold;">Disponible: $${disponible.toFixed(2)}</small>
+        </div>
+        <button type="button" class="cc-deselect-btn" style="background:#ef4444;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Cambiar</button>
+      </div>
+    `
+    
+    resultsDiv.querySelector('.cc-deselect-btn').addEventListener('click', () => {
+      hiddenInput.value = ''
+      searchInput.value = ''
+      searchInput.disabled = false
+      searchInput.style.background = 'white'
+      resultsDiv.innerHTML = ''
+      searchInput.focus()
+    })
+  } catch (err) {
+    console.error('Error obteniendo saldo:', err)
+    resultsDiv.innerHTML = `
+      <div style="padding:8px;background:white;border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <strong>${escapeHtml(cliente.nombre)}</strong><br>
+          <small>Límite: $${Number(cliente.limite_cuenta_corriente || 0).toFixed(2)}</small>
+        </div>
+        <button type="button" class="cc-deselect-btn" style="background:#ef4444;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Cambiar</button>
+      </div>
+    `
+    
+    resultsDiv.querySelector('.cc-deselect-btn').addEventListener('click', () => {
+      hiddenInput.value = ''
+      searchInput.value = ''
+      searchInput.disabled = false
+      searchInput.style.background = 'white'
+      resultsDiv.innerHTML = ''
+      searchInput.focus()
+    })
+  }
 }
 
 function updatePaymentButton() {
@@ -1048,7 +1193,19 @@ async function handleNewSale(e){
     const tipo = row.querySelector('select').value
     const monto = Number(row.querySelector('input[type="number"]').value)
     if (!tipo || monto <= 0) return showMessage('Verifica los datos de pago','error')
-    pagos.push({ tipo_pago: tipo, monto })
+    
+    const pagoObj = { tipo_pago: tipo, monto }
+    
+    // Si es cuenta corriente, incluir cliente_id
+    if (tipo === 'cuenta_corriente') {
+      const clienteIdInput = row.querySelector('.cc-cliente-id')
+      if (!clienteIdInput || !clienteIdInput.value) {
+        return showMessage('Debes seleccionar un cliente para pago con cuenta corriente', 'error')
+      }
+      pagoObj.cliente_id = Number(clienteIdInput.value)
+    }
+    
+    pagos.push(pagoObj)
     totalPagos += monto
   }
   
@@ -1224,7 +1381,7 @@ async function createClienteFromModal(){
   const direccion = fd.get('direccion')
   if (!nombre || !direccion) return showMessage('Nombre y dirección son requeridos','error')
   try{
-    const payload = { nombre, telefono: fd.get('telefono')||'', direccion }
+    const payload = { nombre, telefono: fd.get('telefono')||'', direccion, limite_cuenta_corriente: Number(fd.get('limite_cuenta_corriente')) || 0 }
     const res = await fetch(`${API_BASE_URL}/clientes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
     if (res.ok){
@@ -1246,7 +1403,7 @@ async function createClienteFromForm(form){
   const direccion = fd.get('direccion')
   if (!nombre || !direccion) return showMessage('Nombre y dirección son requeridos','error')
   try{
-    const payload = { nombre, telefono: fd.get('telefono')||'', email: fd.get('email')||'', direccion }
+    const payload = { nombre, telefono: fd.get('telefono')||'', email: fd.get('email')||'', direccion, limite_cuenta_corriente: Number(fd.get('limite_cuenta_corriente')) || 0 }
     const res = await fetch(`${API_BASE_URL}/clientes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
     const data = await res.json()
     if (res.ok){
@@ -2091,6 +2248,10 @@ async function loadSales(date = null){
               icon = '🏦'
               nombre = 'Transf.'
               break
+            case 'cuenta_corriente':
+              icon = '📋'
+              nombre = 'Cta. Corriente'
+              break
           }
           const monto = montos[idx] ? ` $${Number(montos[idx]).toFixed(2)}` : ''
           return `${icon} ${nombre}${monto}`
@@ -2369,6 +2530,16 @@ async function loadListClientes() {
     if (!tbody) return
     tbody.innerHTML = ''
     
+    // Cargar saldos de todos los clientes
+    const saldosPromises = clientes.map(c => 
+      fetch(`${API_BASE_URL}/cuentas-corrientes/cliente/${c.id}`)
+        .then(r => r.json())
+        .then(d => ({ id: c.id, saldo: Number(d.saldo_total || 0) }))
+        .catch(() => ({ id: c.id, saldo: 0 }))
+    )
+    const saldos = await Promise.all(saldosPromises)
+    const saldosMap = Object.fromEntries(saldos.map(s => [s.id, s.saldo]))
+    
     clientes.forEach(c => {
       const tr = document.createElement('tr')
       let estadoBadge = ''
@@ -2380,11 +2551,17 @@ async function loadListClientes() {
         estadoBadge = '<span style="background:#ef4444;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✕ Inactivo</span>'
       }
       
+      const limiteCC = Number(c.limite_cuenta_corriente) || 0
+      const saldoUsado = saldosMap[c.id] || 0
+      const disponible = limiteCC - saldoUsado
+      
       tr.innerHTML = `
         <td>${c.id}</td>
         <td>${escapeHtml(c.nombre)}</td>
         <td>${escapeHtml(c.telefono||'')}</td>
         <td>${escapeHtml(c.direccion||'')}</td>
+        <td style="text-align:right;">$${limiteCC.toFixed(2)}</td>
+        <td style="text-align:right;font-weight:bold;color:${disponible >= 0 ? '#10b981' : '#ef4444'};">$${disponible.toFixed(2)}</td>
         <td>
           <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
             ${estadoBadge}
@@ -2434,6 +2611,7 @@ function openEditClienteModal(c) {
   document.getElementById('editClienteNombre').value = c.nombre || ''
   document.getElementById('editClienteTelefono').value = c.telefono || ''
   document.getElementById('editClienteDireccion').value = c.direccion || ''
+  document.getElementById('editClienteLimiteCC').value = c.limite_cuenta_corriente || 0
   modal.style.display = 'flex'
 }
 
@@ -2691,6 +2869,254 @@ async function cargarHistorialProducto(producto) {
   } catch (err) {
     console.error(err)
     showMessage('Error cargando historial', 'error')
+  }
+}
+
+// ========== CUENTAS CORRIENTES ==========
+
+function initCuentasCorrientesSection() {
+  hideAllSections()
+  const section = document.getElementById('listCuentasCorrientesSection')
+  if (section) section.style.display = 'block'
+  
+  cargarCuentasCorrientes()
+  
+  // Configurar filtro
+  const filtro = document.getElementById('filtroCuentas')
+  if (filtro) {
+    const newFiltro = filtro.cloneNode(true)
+    filtro.parentNode.replaceChild(newFiltro, filtro)
+    newFiltro.addEventListener('change', () => {
+      cargarCuentasCorrientes()
+    })
+  }
+  
+  // Configurar botón actualizar estados
+  const btnActualizar = document.getElementById('btnActualizarEstadoCuentas')
+  if (btnActualizar) {
+    // Remover listeners anteriores
+    const newBtn = btnActualizar.cloneNode(true)
+    btnActualizar.parentNode.replaceChild(newBtn, btnActualizar)
+    
+    newBtn.addEventListener('click', async () => {
+      await actualizarEstadosCuentas()
+    })
+  }
+  
+  // Configurar modal de pago
+  const pagarForm = document.getElementById('pagarCuentaForm')
+  const cancelBtn = document.getElementById('cancelPagarCuentaBtn')
+  
+  if (cancelBtn) {
+    const newCancelBtn = cancelBtn.cloneNode(true)
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn)
+    newCancelBtn.addEventListener('click', () => {
+      document.getElementById('pagarCuentaModal').style.display = 'none'
+    })
+  }
+  
+  if (pagarForm) {
+    const newForm = pagarForm.cloneNode(true)
+    pagarForm.parentNode.replaceChild(newForm, pagarForm)
+    
+    newForm.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      
+      const cuentaId = document.getElementById('pagarCuentaId').value
+      const monto = Number(document.getElementById('pagarCuentaMonto').value)
+      const notas = document.getElementById('pagarCuentaNotas').value
+      
+      if (!cuentaId || monto <= 0) {
+        return showMessage('Verifica los datos del pago', 'error')
+      }
+      
+      try {
+        const res = await fetch(`${API_BASE_URL}/cuentas-corrientes/pago`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cuenta_corriente_id: Number(cuentaId),
+            monto_pagado: monto,
+            usuario_id: currentUser.id,
+            notas: notas || null
+          })
+        })
+        
+        const data = await res.json()
+        if (res.ok) {
+          showMessage('Pago registrado exitosamente', 'success')
+          document.getElementById('pagarCuentaModal').style.display = 'none'
+          newForm.reset()
+          cargarCuentasCorrientes()
+        } else {
+          showMessage(data.error || 'Error al registrar pago', 'error')
+        }
+      } catch (err) {
+        console.error(err)
+        showMessage('Error de red', 'error')
+      }
+    })
+  }
+}
+
+async function cargarCuentasCorrientes() {
+  try {
+    const filtro = document.getElementById('filtroCuentas')?.value || 'activas'
+    const res = await fetch(`${API_BASE_URL}/cuentas-corrientes?filter=${filtro}`)
+    if (!res.ok) throw new Error('Error cargando cuentas')
+    
+    const cuentas = await res.json()
+    
+    const tbody = document.getElementById('cuentasCorrientesTable')?.querySelector('tbody')
+    if (!tbody) return
+    
+    tbody.innerHTML = ''
+    
+    if (cuentas.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b;">No hay cuentas corrientes registradas</td></tr>'
+      return
+    }
+    
+    cuentas.forEach(c => {
+      const tr = document.createElement('tr')
+      
+      // Badge de estado
+      let estadoBadge = ''
+      if (c.estado === 'pendiente') {
+        estadoBadge = '<span style="background:#fbbf24;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">⏳ Pendiente</span>'
+      } else if (c.estado === 'vencida') {
+        estadoBadge = '<span style="background:#ef4444;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">❌ Vencida</span>'
+      } else if (c.estado === 'pagada') {
+        estadoBadge = '<span style="background:#10b981;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✓ Pagada</span>'
+      }
+      
+      // Formatear fecha de vencimiento
+      const fechaVenc = new Date(c.fecha_vencimiento)
+      const fechaStr = fechaVenc.toLocaleDateString('es-AR')
+      
+      // Botones de acción
+      let accionBtns = ''
+      if (c.estado !== 'pagada' && Number(c.saldo_pendiente) > 0) {
+        accionBtns += `<button class="auth-btn pagar-cuenta-btn" data-cuenta='${JSON.stringify(c).replace(/'/g, "&apos;")}' style="font-size:0.85rem;padding:6px 10px;margin-right:4px;">💰 Pagar</button>`
+      }
+      if (c.estado === 'pendiente' || c.estado === 'vencida') {
+        accionBtns += `<button class="auth-btn marcar-pagada-btn" data-id="${c.id}" style="font-size:0.85rem;padding:6px 10px;background:#10b981;">✓ Pagada</button>`
+      }
+      
+      tr.innerHTML = `
+        <td>${escapeHtml(c.cliente_nombre)}</td>
+        <td>#${c.venta_id}</td>
+        <td style="text-align:right;">$${Number(c.monto).toFixed(2)}</td>
+        <td style="text-align:right;font-weight:bold;">$${Number(c.saldo_pendiente).toFixed(2)}</td>
+        <td>${fechaStr}</td>
+        <td>${estadoBadge}</td>
+        <td>${accionBtns}</td>
+      `
+      
+      tbody.appendChild(tr)
+    })
+    
+    // Agregar listeners a botones
+    tbody.querySelectorAll('.pagar-cuenta-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const cuentaData = JSON.parse(e.target.dataset.cuenta)
+        abrirModalPago(cuentaData)
+      })
+    })
+    
+    tbody.querySelectorAll('.marcar-pagada-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.dataset.id
+        if (!confirm('¿Marcar esta cuenta como pagada?')) return
+        
+        try {
+          const res = await fetch(`${API_BASE_URL}/cuentas-corrientes/${id}/estado`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'pagada' })
+          })
+          
+          if (!res.ok) throw new Error('Error actualizando estado')
+          
+          alert('Cuenta marcada como pagada')
+          cargarCuentasCorrientes()
+        } catch (err) {
+          alert('Error: ' + err.message)
+        }
+      })
+    })
+    
+  } catch (err) {
+    console.error(err)
+    showMessage('Error cargando cuentas corrientes', 'error')
+  }
+}
+
+function abrirModalPago(cuenta) {
+  const modal = document.getElementById('pagarCuentaModal')
+  if (!modal) return
+  
+  document.getElementById('pagarCuentaId').value = cuenta.id
+  document.getElementById('pagarCuentaCliente').value = cuenta.cliente_nombre
+  document.getElementById('pagarCuentaSaldo').value = `$${Number(cuenta.saldo_pendiente).toFixed(2)}`
+  document.getElementById('pagarCuentaMonto').value = Number(cuenta.saldo_pendiente).toFixed(2)
+  document.getElementById('pagarCuentaMonto').max = Number(cuenta.saldo_pendiente).toFixed(2)
+  document.getElementById('pagarCuentaNotas').value = ''
+  
+  modal.style.display = 'flex'
+}
+
+async function actualizarEstadosCuentas() {
+  try {
+    showMessage('Actualizando estados de cuentas...', 'info')
+    
+    const res = await fetch(`${API_BASE_URL}/cuentas-corrientes`)
+    if (!res.ok) throw new Error('Error cargando cuentas')
+    
+    const data = await res.json()
+    const cuentas = (data.cuentas || []).filter(c => c.estado === 'pendiente')
+    
+    const ahora = new Date()
+    let actualizadas = 0
+    let clientesDeudores = new Set()
+    
+    for (const cuenta of cuentas) {
+      const fechaVenc = new Date(cuenta.fecha_vencimiento)
+      
+      if (fechaVenc < ahora && Number(cuenta.saldo_pendiente) > 0) {
+        // Actualizar estado de cuenta a vencida
+        const resUpdate = await fetch(`${API_BASE_URL}/cuentas-corrientes/${cuenta.id}/estado`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado: 'vencida' })
+        })
+        
+        if (resUpdate.ok) {
+          actualizadas++
+          clientesDeudores.add(cuenta.cliente_id)
+        }
+      }
+    }
+    
+    // Actualizar clientes a estado deudor
+    for (const clienteId of clientesDeudores) {
+      await fetch(`${API_BASE_URL}/clientes/${clienteId}/estado`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'deudor' })
+      })
+    }
+    
+    if (actualizadas > 0) {
+      showMessage(`Se actualizaron ${actualizadas} cuentas vencidas`, 'success')
+      cargarCuentasCorrientes()
+    } else {
+      showMessage('No hay cuentas vencidas para actualizar', 'info')
+    }
+    
+  } catch (err) {
+    console.error(err)
+    showMessage('Error actualizando estados', 'error')
   }
 }
 

@@ -268,12 +268,12 @@ router.get('/clientes', async (req, res) => {
   try {
     if (!q) {
       // devolver clientes (sin email para compatibilidad con esquemas antiguos)
-      const rows = await query('SELECT id, nombre, telefono, direccion, estado, creado_en FROM clientes ORDER BY creado_en DESC LIMIT 100');
+      const rows = await query('SELECT id, nombre, telefono, direccion, estado, limite_cuenta_corriente, creado_en FROM clientes ORDER BY creado_en DESC LIMIT 100');
       return res.json({ clientes: rows });
     }
     const like = `%${q}%`;
     // Buscar por nombre o telefono (compatibilizar si no existe columna email)
-    const rows = await query('SELECT id, nombre, telefono, direccion, estado FROM clientes WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre LIMIT 50', [like, like]);
+    const rows = await query('SELECT id, nombre, telefono, direccion, estado, limite_cuenta_corriente FROM clientes WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre LIMIT 50', [like, like]);
     res.json({ clientes: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -281,14 +281,13 @@ router.get('/clientes', async (req, res) => {
 });
 
 // POST /api/clientes -> crear cliente
-// body: { nombre, telefono, email, direccion }
+// body: { nombre, telefono, email, direccion, limite_cuenta_corriente }
 router.post('/clientes', async (req, res) => {
-  // Compatibilidad: la tabla 'clientes' puede no tener columna email.
-  const { nombre, telefono, email, direccion } = req.body;
+  const { nombre, telefono, email, direccion, limite_cuenta_corriente } = req.body;
   if (!nombre || !direccion) return res.status(400).json({ error: 'Faltan datos de cliente (nombre y direccion requeridos para envíos)' });
   try {
-    // Insert compatible con tu tabla actual (nombre, telefono, direccion)
-    const result = await query('INSERT INTO clientes (nombre, telefono, direccion) VALUES (?, ?, ?)', [nombre, telefono || '', direccion]);
+    const result = await query('INSERT INTO clientes (nombre, telefono, direccion, limite_cuenta_corriente) VALUES (?, ?, ?, ?)', 
+      [nombre, telefono || '', direccion, limite_cuenta_corriente || 0]);
     return res.status(201).json({ message: 'Cliente creado', id: result.insertId });
   } catch (err) {
     console.error('[CLIENTES] error creando cliente', err)
@@ -470,7 +469,7 @@ router.get('/productos/:id/historial', async (req, res) => {
 
 // Ventas endpoints
 // POST /api/ventas -> create a sale
-// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], pagos: [{ tipo_pago, monto }], envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
+// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], pagos: [{ tipo_pago, monto, cliente_id? }], envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
 router.post('/ventas', async (req, res) => {
   const { usuario_id, items, pagos, envio } = req.body;
   if (!usuario_id || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Faltan datos de la venta' });
@@ -483,12 +482,66 @@ router.post('/ventas', async (req, res) => {
     for (const it of items) {
       total += Number(it.precio_unitario) * Number(it.cantidad);
     }
+    
+    // Validar cuenta corriente si aplica
+    const cuentaCorrientePago = pagos.find(p => p.tipo_pago === 'cuenta_corriente');
+    if (cuentaCorrientePago) {
+      if (!cuentaCorrientePago.cliente_id) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Debe seleccionar un cliente para cuenta corriente' });
+      }
+      
+      // Verificar que el cliente no sea deudor
+      const [clientes] = await conn.query('SELECT estado, limite_cuenta_corriente FROM clientes WHERE id = ?', [cuentaCorrientePago.cliente_id]);
+      if (!clientes || clientes.length === 0) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+      }
+      
+      const cliente = clientes[0];
+      if (cliente.estado === 'deudor') {
+        await conn.rollback();
+        return res.status(400).json({ error: 'No se puede vender a cuenta corriente: el cliente está en estado deudor' });
+      }
+      
+      // Verificar límite de cuenta corriente
+      const [saldoResult] = await conn.query(
+        'SELECT SUM(saldo_pendiente) as saldo_actual FROM cuentas_corrientes WHERE cliente_id = ? AND estado != "pagada"',
+        [cuentaCorrientePago.cliente_id]
+      );
+      
+      const saldoActual = Number(saldoResult[0]?.saldo_actual || 0);
+      const limiteCC = Number(cliente.limite_cuenta_corriente || 0);
+      const montoCC = Number(cuentaCorrientePago.monto);
+      
+      if (saldoActual + montoCC > limiteCC) {
+        await conn.rollback();
+        return res.status(400).json({ 
+          error: `Límite de cuenta corriente excedido. Límite: $${limiteCC.toFixed(2)}, Saldo actual: $${saldoActual.toFixed(2)}, Monto solicitado: $${montoCC.toFixed(2)}` 
+        });
+      }
+    }
+    
   const [ventaResult] = await conn.query('INSERT INTO ventas (total, usuario_id) VALUES (?, ?)', [total, usuario_id]);
     const ventaId = ventaResult.insertId;
     
     // Registrar los pagos (puede ser 1 o más)
     for (const pago of pagos) {
       await conn.query('INSERT INTO pagos (venta_id, tipo_pago, monto) VALUES (?, ?, ?)', [ventaId, pago.tipo_pago, pago.monto]);
+      
+      // Si es cuenta corriente, crear registro en cuentas_corrientes
+      if (pago.tipo_pago === 'cuenta_corriente' && pago.cliente_id) {
+        const fechaVencimiento = new Date();
+        fechaVencimiento.setDate(15); // Día 15
+        if (fechaVencimiento <= new Date()) {
+          fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 1); // Si ya pasó el día 15, siguiente mes
+        }
+        
+        await conn.query(
+          'INSERT INTO cuentas_corrientes (venta_id, cliente_id, monto, saldo_pendiente, fecha_vencimiento) VALUES (?, ?, ?, ?, ?)',
+          [ventaId, pago.cliente_id, pago.monto, pago.monto, fechaVencimiento.toISOString().split('T')[0]]
+        );
+      }
     }
     
     for (const it of items) {
@@ -700,10 +753,11 @@ router.put('/productos/:id/estado', async (req, res) => {
 // PUT /api/clientes/:id -> editar datos del cliente
 router.put('/clientes/:id', async (req, res) => {
   const { id } = req.params;
-  const { nombre, telefono, direccion } = req.body;
+  const { nombre, telefono, direccion, limite_cuenta_corriente } = req.body;
   if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
   try {
-    await query('UPDATE clientes SET nombre = ?, telefono = ?, direccion = ? WHERE id = ?', [nombre, telefono || '', direccion || '', id]);
+    await query('UPDATE clientes SET nombre = ?, telefono = ?, direccion = ?, limite_cuenta_corriente = ? WHERE id = ?', 
+      [nombre, telefono || '', direccion || '', limite_cuenta_corriente || 0, id]);
     res.json({ message: 'Cliente actualizado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -746,6 +800,165 @@ router.put('/proveedores/:id/estado', async (req, res) => {
     await query('UPDATE proveedores SET estado = ? WHERE id = ?', [estado, id]);
     res.json({ message: 'Estado actualizado' });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cuentas Corrientes endpoints
+// GET /api/cuentas-corrientes?filter=activas|vencidas|todas -> obtener cuentas corrientes filtradas
+router.get('/cuentas-corrientes', async (req, res) => {
+  const filter = req.query.filter || 'activas';
+  try {
+    let whereClause = '';
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (filter === 'activas') {
+      // Cuentas pendientes desde el día 15 del mes actual en adelante
+      const day15ThisMonth = new Date();
+      day15ThisMonth.setDate(15);
+      day15ThisMonth.setHours(0, 0, 0, 0);
+      whereClause = `WHERE cc.estado = 'pendiente' AND cc.fecha_vencimiento >= '${day15ThisMonth.toISOString().split('T')[0]}'`;
+    } else if (filter === 'vencidas') {
+      whereClause = `WHERE cc.estado IN ('pendiente', 'vencida') AND cc.fecha_vencimiento < '${today}'`;
+    }
+    // Si filter === 'todas', no agregamos WHERE
+    
+    const cuentas = await query(
+      `SELECT cc.*, c.nombre as cliente_nombre, c.estado as cliente_estado, v.fecha as fecha_venta, v.total as monto_venta
+       FROM cuentas_corrientes cc
+       JOIN clientes c ON cc.cliente_id = c.id
+       JOIN ventas v ON cc.venta_id = v.id
+       ${whereClause}
+       ORDER BY cc.fecha_vencimiento ASC`
+    );
+    res.json(cuentas);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cuentas-corrientes/cliente/:id -> obtener cuentas de un cliente específico
+router.get('/cuentas-corrientes/cliente/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const cuentas = await query(
+      `SELECT cc.*, v.fecha as fecha_venta
+       FROM cuentas_corrientes cc
+       JOIN ventas v ON cc.venta_id = v.id
+       WHERE cc.cliente_id = ?
+       ORDER BY cc.fecha_vencimiento ASC`,
+      [id]
+    );
+    
+    const saldoTotal = await query(
+      `SELECT SUM(saldo_pendiente) as total FROM cuentas_corrientes WHERE cliente_id = ? AND estado != 'pagada'`,
+      [id]
+    );
+    
+    res.json({ 
+      cuentas, 
+      saldo_total: saldoTotal[0]?.total || 0 
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cuentas-corrientes/pago -> registrar pago de cuenta corriente
+router.post('/cuentas-corrientes/pago', async (req, res) => {
+  const { cuenta_corriente_id, monto_pagado, usuario_id, notas } = req.body;
+  
+  if (!cuenta_corriente_id || !monto_pagado) {
+    return res.status(400).json({ error: 'Faltan datos requeridos' });
+  }
+  
+  try {
+    // Obtener cuenta corriente y cliente
+    const cuentas = await query('SELECT * FROM cuentas_corrientes WHERE id = ?', [cuenta_corriente_id]);
+    if (!cuentas || cuentas.length === 0) {
+      return res.status(404).json({ error: 'Cuenta corriente no encontrada' });
+    }
+    
+    const cuenta = cuentas[0];
+    const nuevoSaldo = Number(cuenta.saldo_pendiente) - Number(monto_pagado);
+    
+    if (nuevoSaldo < 0) {
+      return res.status(400).json({ error: 'El monto pagado excede el saldo pendiente' });
+    }
+    
+    // Registrar pago
+    await query(
+      'INSERT INTO pagos_cuenta_corriente (cuenta_corriente_id, monto_pagado, usuario_id, notas) VALUES (?, ?, ?, ?)',
+      [cuenta_corriente_id, monto_pagado, usuario_id, notas || null]
+    );
+    
+    // Actualizar saldo y estado
+    const nuevoEstado = nuevoSaldo === 0 ? 'pagada' : cuenta.estado;
+    await query(
+      'UPDATE cuentas_corrientes SET saldo_pendiente = ?, estado = ? WHERE id = ?',
+      [nuevoSaldo, nuevoEstado, cuenta_corriente_id]
+    );
+    
+    // Si pagó todo y era deudor, cambiar estado del cliente
+    if (nuevoSaldo === 0) {
+      const clienteSaldo = await query(
+        'SELECT SUM(saldo_pendiente) as total FROM cuentas_corrientes WHERE cliente_id = ? AND estado != "pagada"',
+        [cuenta.cliente_id]
+      );
+      
+      if ((clienteSaldo[0]?.total || 0) === 0) {
+        await query('UPDATE clientes SET estado = "activo" WHERE id = ?', [cuenta.cliente_id]);
+      }
+    }
+    
+    res.json({ 
+      message: 'Pago registrado exitosamente',
+      nuevo_saldo: nuevoSaldo,
+      estado: nuevoEstado
+    });
+  } catch (err) {
+    console.error('Error registrando pago:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/cuentas-corrientes/:id/estado -> marcar cuenta como pagada manualmente
+router.put('/cuentas-corrientes/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  
+  if (!['pendiente', 'pagada', 'vencida'].includes(estado)) {
+    return res.status(400).json({ error: 'Estado inválido' });
+  }
+  
+  try {
+    const cuentas = await query('SELECT * FROM cuentas_corrientes WHERE id = ?', [id]);
+    if (!cuentas || cuentas.length === 0) {
+      return res.status(404).json({ error: 'Cuenta corriente no encontrada' });
+    }
+    
+    const cuenta = cuentas[0];
+    
+    // Si se marca como pagada, poner saldo en 0
+    if (estado === 'pagada') {
+      await query('UPDATE cuentas_corrientes SET estado = ?, saldo_pendiente = 0 WHERE id = ?', [estado, id]);
+      
+      // Verificar si el cliente ya no tiene deudas
+      const clienteSaldo = await query(
+        'SELECT SUM(saldo_pendiente) as total FROM cuentas_corrientes WHERE cliente_id = ? AND estado != "pagada"',
+        [cuenta.cliente_id]
+      );
+      
+      if ((clienteSaldo[0]?.total || 0) === 0) {
+        await query('UPDATE clientes SET estado = "activo" WHERE id = ?', [cuenta.cliente_id]);
+      }
+    } else {
+      await query('UPDATE cuentas_corrientes SET estado = ? WHERE id = ?', [estado, id]);
+    }
+    
+    res.json({ message: 'Estado actualizado' });
+  } catch (err) {
+    console.error('Error actualizando estado:', err);
     res.status(500).json({ error: err.message });
   }
 });
