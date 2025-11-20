@@ -17,6 +17,8 @@ const refs = {
   stockSubmenu: document.getElementById('stockSubmenu'),
   cajaMenuBtn: document.getElementById('cajaMenuBtn'),
   cajaSubmenu: document.getElementById('cajaSubmenu'),
+  listasMenuBtn: document.getElementById('listasMenuBtn'),
+  listasSubmenu: document.getElementById('listasSubmenu'),
   welcomeSection: document.getElementById('welcomeSection'),
   loginSection: document.getElementById('loginSection'),
   registerSection: document.getElementById('registerSection'),
@@ -118,14 +120,29 @@ function attachListeners(){
   })
   document.getElementById('productsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.productsSection); loadProducts() })
   document.getElementById('pedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('pedidosSection')); loadPedidos() })
-  document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('hojaRutaSection')); loadHojaRuta() })
+  document.getElementById('hojaRutaLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    // Solo vendedor NO puede acceder, cajero SÍ puede
+    if (currentUser && currentUser.rol === 'vendedor') return showMessage('Acceso denegado','error')
+    showSection(document.getElementById('hojaRutaSection'))
+    loadHojaRuta()
+  })
   document.getElementById('stockReportsLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); showSection(refs.stockReportsSection); await generateLowStockReport() })
-  document.getElementById('stockPedidosLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('stockPedidosSection')); openStockPedidos() })
+  document.getElementById('stockPedidosLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    if (currentUser && (currentUser.rol === 'vendedor' || currentUser.rol === 'cajero')) return showMessage('Acceso denegado','error')
+    showSection(document.getElementById('stockPedidosSection'))
+    openStockPedidos()
+  })
   // Caja submenu links -> show specific internal panels
   document.getElementById('cajaOpenLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('apertura') })
   document.getElementById('cajaCloseLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('cierre') })
   document.getElementById('cajaMovementsLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('movimientos') })
-  document.getElementById('cajaArqueoLink')?.addEventListener('click', async (e)=>{ e.preventDefault(); await showCajaPanel('arqueo') })
+  document.getElementById('cajaArqueoLink')?.addEventListener('click', async (e)=>{ 
+    e.preventDefault()
+    if (currentUser && (currentUser.rol === 'vendedor' || currentUser.rol === 'cajero')) return showMessage('Acceso denegado','error')
+    await showCajaPanel('arqueo')
+  })
 
   refs.loginForm?.addEventListener('submit', handleLogin)
   refs.registerForm?.addEventListener('submit', handleRegister)
@@ -214,11 +231,40 @@ function attachListeners(){
   })
 
   // Listas submenu links
-  document.getElementById('listProductsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listProductsSection')); loadListProducts(); closeAllSubmenus(); })
-  document.getElementById('listClientesLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listClientesSection')); loadListClientes(); closeAllSubmenus(); })
-  document.getElementById('listProveedoresLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listProveedoresSection')); loadListProveedores(); closeAllSubmenus(); })
-  document.getElementById('listHistorialLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listHistorialSection')); initHistorialSection(); closeAllSubmenus(); })
-  document.getElementById('listCuentasCorrientesLink')?.addEventListener('click', (e)=>{ e.preventDefault(); initCuentasCorrientesSection(); closeAllSubmenus(); })
+  document.getElementById('listProductsLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    if (currentUser && currentUser.rol === 'cajero') return showMessage('Acceso denegado','error')
+    showSection(document.getElementById('listProductsSection'))
+    loadListProducts()
+    closeAllSubmenus()
+  })
+  document.getElementById('listClientesLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    if (currentUser && currentUser.rol === 'cajero') return showMessage('Acceso denegado','error')
+    showSection(document.getElementById('listClientesSection'))
+    loadListClientes()
+    closeAllSubmenus()
+  })
+  document.getElementById('listProveedoresLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    if (currentUser && currentUser.rol === 'cajero') return showMessage('Acceso denegado','error')
+    showSection(document.getElementById('listProveedoresSection'))
+    loadListProveedores()
+    closeAllSubmenus()
+  })
+  document.getElementById('listHistorialLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    if (currentUser && (currentUser.rol === 'vendedor' || currentUser.rol === 'cajero')) return showMessage('Acceso denegado','error')
+    showSection(document.getElementById('listHistorialSection'))
+    initHistorialSection()
+    closeAllSubmenus()
+  })
+  document.getElementById('listCuentasCorrientesLink')?.addEventListener('click', (e)=>{ 
+    e.preventDefault()
+    if (currentUser && currentUser.rol === 'vendedor') return showMessage('Acceso denegado','error')
+    initCuentasCorrientesSection()
+    closeAllSubmenus()
+  })
 
   // Admin menu toggle
   refs.adminUsersBtn?.addEventListener('click', (e)=>{
@@ -318,8 +364,7 @@ function closeAllSubmenus(){
   if (refs.ventasSubmenu) refs.ventasSubmenu.style.display = 'none'
   if (refs.stockSubmenu) refs.stockSubmenu.style.display = 'none'
   if (refs.cajaSubmenu) refs.cajaSubmenu.style.display = 'none'
-  const listasSubmenu = document.getElementById('listasSubmenu')
-  if (listasSubmenu) listasSubmenu.style.display = 'none'
+  if (refs.listasSubmenu) refs.listasSubmenu.style.display = 'none'
   if (refs.adminSubmenu) refs.adminSubmenu.style.display = 'none'
 }
 
@@ -432,18 +477,67 @@ function updateNav(active){
       // Admin sees only admin menu
       if (refs.adminMenu) refs.adminMenu.style.display = 'flex'
     } else if (currentUser.rol === 'moderador'){
-      // Moderador sees main menu (ventas, stock, caja)
+      // Moderador sees main menu (ventas, stock, caja, listas) - acceso completo
       if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
-      // ensure stock/ventas/caja buttons visible
+      // ensure stock/ventas/caja/listas buttons visible
       if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
       if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'inline-block'
       if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
+      if (refs.listasMenuBtn) refs.listasMenuBtn.style.display = 'inline-block'
+      
+      // Mostrar todos los items del submenú para moderador
+      document.getElementById('hojaRutaLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('listHistorialLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('stockPedidosLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('alquileresLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('stockReportsLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('cajaArqueoLink')?.style.setProperty('display', 'block', 'important')
     } else if (currentUser.rol === 'vendedor'){
-      // Vendedor sees only ventas and caja
+      // Vendedor sees ventas (nueva venta, historial), utilidades (solo reportes de stock), caja (apertura, cierre, movimientos)
       if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
       if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
       if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
-      if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'none'
+      if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'inline-block'
+      
+      // Ocultar menú Listas completo para vendedor
+      if (refs.listasMenuBtn) refs.listasMenuBtn.style.display = 'none'
+      
+      // Ocultar Hoja de Ruta en el submenú de Ventas
+      document.getElementById('hojaRutaLink')?.style.setProperty('display', 'none', 'important')
+      
+      // Ocultar items del submenú de Utilidades que vendedor no debe ver
+      document.getElementById('listHistorialLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('stockPedidosLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('alquileresLink')?.style.setProperty('display', 'none', 'important')
+      
+      // Ocultar item del submenú de Caja que vendedor no debe ver
+      document.getElementById('cajaArqueoLink')?.style.setProperty('display', 'none', 'important')
+    } else if (currentUser.rol === 'cajero'){
+      // Cajero sees ventas (completo), utilidades (reportes stock + alquileres), caja (apertura, cierre, movimientos), listas (solo cuentas corrientes)
+      if (refs.mainMenu) refs.mainMenu.style.display = 'flex'
+      if (refs.ventasMenuBtn) refs.ventasMenuBtn.style.display = 'inline-block'
+      if (refs.cajaMenuBtn) refs.cajaMenuBtn.style.display = 'inline-block'
+      if (refs.stockMenuBtn) refs.stockMenuBtn.style.display = 'inline-block'
+      if (refs.listasMenuBtn) refs.listasMenuBtn.style.display = 'inline-block'
+      
+      // Mostrar todos los items de Ventas para cajero
+      document.getElementById('hojaRutaLink')?.style.setProperty('display', 'block', 'important')
+      
+      // En Utilidades: solo Reportes de Stock y Alquileres
+      document.getElementById('stockReportsLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('alquileresLink')?.style.setProperty('display', 'block', 'important')
+      document.getElementById('listHistorialLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('stockPedidosLink')?.style.setProperty('display', 'none', 'important')
+      
+      // En Caja: solo Apertura, Cierre, Movimientos
+      document.getElementById('cajaArqueoLink')?.style.setProperty('display', 'none', 'important')
+      
+      // En Listas: solo Cuentas Corrientes
+      document.getElementById('listProductsLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('listClientesLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('listProveedoresLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('listHistorialLink')?.style.setProperty('display', 'none', 'important')
+      document.getElementById('listCuentasCorrientesLink')?.style.setProperty('display', 'block', 'important')
     } else if (currentUser.rol === 'pendiente'){
       // Pending users see no menus
       if (refs.mainMenu) refs.mainMenu.style.display = 'none'
@@ -1972,7 +2066,7 @@ document.addEventListener('click', (e)=>{
 
 // Hoja de ruta: listar ventas/pedidos pendientes con detalle de productos
 async function loadHojaRuta(){
-  if (!currentUser || (currentUser.rol !== 'moderador' && currentUser.rol !== 'admin')) return showMessage('Acceso denegado','error')
+  if (!currentUser || (currentUser.rol !== 'moderador' && currentUser.rol !== 'admin' && currentUser.rol !== 'cajero')) return showMessage('Acceso denegado','error')
   try{
     const res = await fetch(`${API_BASE_URL}/hoja_ruta`)
     if (!res.ok) {
@@ -3405,6 +3499,8 @@ async function actualizarEstadosCuentas() {
 // Event listeners para alquileres
 document.getElementById('alquileresLink')?.addEventListener('click', (e) => {
   e.preventDefault()
+  // Vendedor NO puede acceder, pero cajero SÍ puede
+  if (currentUser && currentUser.rol === 'vendedor') return showMessage('Acceso denegado','error')
   hideAllSections()
   closeAllSubmenus()
   const section = document.getElementById('alquileresSection')

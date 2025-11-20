@@ -743,7 +743,7 @@
                 <!-- Contenido dinámico -->
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-                <button type="button" class="auth-btn" style="background:#64748b" onclick="document.getElementById('managePagosModal').style.display='none'">Cerrar</button>
+                <button type="button" class="auth-btn" style="background:#64748b" onclick="(function(){ var m = document.getElementById('managePagosModal'); if(m) m.style.display='none'; })()">Cerrar</button>
             </div>
         </div>
     </div>
