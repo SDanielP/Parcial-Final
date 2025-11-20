@@ -93,7 +93,7 @@ function attachListeners(){
   refs.showRegisterLink?.addEventListener('click', (e)=>{ e.preventDefault(); showRegister() })
   refs.showLoginLink?.addEventListener('click', (e)=>{ e.preventDefault(); showLogin() })
 
-  document.getElementById('newSaleLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.newSaleSection); ensureProductsLoaded(); ensureProductSearch() })
+  document.getElementById('newSaleLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(refs.newSaleSection) })
     document.getElementById('salesHistoryLink')?.addEventListener('click', (e)=>{
     e.preventDefault()
     showSection(refs.salesHistorySection)
@@ -177,6 +177,21 @@ function attachListeners(){
       refs.cajaSubmenu.style.display = 'flex'
     }
   })
+
+  // Listas menu toggle
+  document.getElementById('listasMenuBtn')?.addEventListener('click', (e)=>{
+    e.stopPropagation()
+    const submenu = document.getElementById('listasSubmenu')
+    const isVisible = submenu?.style.display === 'flex'
+    closeAllSubmenus()
+    if (!isVisible && submenu) submenu.style.display = 'flex'
+  })
+
+  // Listas submenu links
+  document.getElementById('listProductsLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listProductsSection')); loadListProducts(); closeAllSubmenus(); })
+  document.getElementById('listClientesLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listClientesSection')); loadListClientes(); closeAllSubmenus(); })
+  document.getElementById('listProveedoresLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listProveedoresSection')); loadListProveedores(); closeAllSubmenus(); })
+  document.getElementById('listHistorialLink')?.addEventListener('click', (e)=>{ e.preventDefault(); showSection(document.getElementById('listHistorialSection')); initHistorialSection(); closeAllSubmenus(); })
 
   // Admin menu toggle
   refs.adminUsersBtn?.addEventListener('click', (e)=>{
@@ -270,25 +285,25 @@ function closeAllSubmenus(){
   if (refs.ventasSubmenu) refs.ventasSubmenu.style.display = 'none'
   if (refs.stockSubmenu) refs.stockSubmenu.style.display = 'none'
   if (refs.cajaSubmenu) refs.cajaSubmenu.style.display = 'none'
+  const listasSubmenu = document.getElementById('listasSubmenu')
+  if (listasSubmenu) listasSubmenu.style.display = 'none'
   if (refs.adminSubmenu) refs.adminSubmenu.style.display = 'none'
 }
 
 function closeAllModals(){
-  // Close all modals (pedido proveedor, cliente modal, etc)
-  console.log('Cerrando modales, encontrados:', document.querySelectorAll('.modal').length)
+  // Close all modals (hide them, don't remove from DOM)
   document.querySelectorAll('.modal').forEach(modal => {
-    console.log('Removiendo modal:', modal.id)
-    modal.remove()
+    modal.style.display = 'none'
   })
 }
 
 function hideAllSections(){
   // Hide known sections
   closeAllModals() // Close any open modals when changing sections
-  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection']
+  const sections = ['welcomeSection','loginSection','registerSection','dashboardSection','pendingSection','newSaleSection','salesHistorySection','productsSection','addProductSection','stockReportsSection','cajaSection','pedidosSection','hojaRutaSection','manageUsersSection','stockPedidosSection','listProductsSection','listClientesSection','listProveedoresSection','listHistorialSection']
   sections.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none' })
 }
-function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded() } }
+function showSection(el){ if (!el) return; hideAllSections(); el.style.display = 'block'; if (el === refs.newSaleSection){ ensureProductSearch(); ensureProductsLoaded(); initPaymentSystem() } }
 
 // When showing caja section, prefill caja-related fields
 async function prepareCajaSection(){
@@ -737,10 +752,14 @@ function logout(){
 // Products
 async function loadProducts(){
   try{
-    // Use productos_ext to get proveedor_id field for filtering
-    const res = await fetch(`${API_BASE_URL}/productos_ext`)
+    // Cargar productos (filtrar solo activos para ventas)
+    const res = await fetch(`${API_BASE_URL}/productos`)
     const data = await res.json()
-    productsCache = data.productos || []
+    const allProducts = data.productos || []
+    
+    // Para ventas: solo productos activos
+    productsCache = allProducts.filter(p => p.estado === 'activo' || !p.estado)
+    
     if (!refs.productsTable) return
     const tbody = refs.productsTable.querySelector('tbody')
     tbody.innerHTML = ''
@@ -781,6 +800,7 @@ function closeEditModal(){
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
+  // Edit Product Modal
   const editForm = document.getElementById('editProductForm')
   const cancelBtn = document.getElementById('cancelEditBtn')
   if (cancelBtn) cancelBtn.addEventListener('click', (e)=>{ e.preventDefault(); closeEditModal() })
@@ -792,12 +812,69 @@ document.addEventListener('DOMContentLoaded', ()=>{
         nombre: document.getElementById('editNombre').value,
         descripcion: document.getElementById('editDescripcion').value,
         precio: Number(document.getElementById('editPrecio').value),
-        stock: Number(document.getElementById('editStock').value)
+        stock: Number(document.getElementById('editStock').value),
+        usuario_id: currentUser ? currentUser.id : null
       }
       try{
         const res = await fetch(`${API_BASE_URL}/productos/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
         const data = await res.json()
-        if (res.ok){ showMessage('Producto actualizado','success'); closeEditModal(); loadProducts() } else showMessage(data.error || 'Error al actualizar producto','error')
+        if (res.ok){ 
+          showMessage(data.historial_registrado ? 'Producto actualizado (cambio registrado)' : 'Producto actualizado','success')
+          closeEditModal()
+          loadListProducts()
+        } else showMessage(data.error || 'Error al actualizar producto','error')
+      }catch(err){ console.error(err); showMessage('Error de red','error') }
+    })
+  }
+  
+  // Edit Cliente Modal
+  const editClienteForm = document.getElementById('editClienteForm')
+  const cancelEditClienteBtn = document.getElementById('cancelEditClienteBtn')
+  if (cancelEditClienteBtn) cancelEditClienteBtn.addEventListener('click', ()=>{ document.getElementById('editClienteModal').style.display = 'none' })
+  if (editClienteForm){
+    editClienteForm.addEventListener('submit', async (e)=>{
+      e.preventDefault()
+      const id = document.getElementById('editClienteId').value
+      const payload = {
+        nombre: document.getElementById('editClienteNombre').value,
+        telefono: document.getElementById('editClienteTelefono').value,
+        direccion: document.getElementById('editClienteDireccion').value
+      }
+      try{
+        const res = await fetch(`${API_BASE_URL}/clientes/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+        const data = await res.json()
+        if (res.ok){ 
+          showMessage('Cliente actualizado','success')
+          document.getElementById('editClienteModal').style.display = 'none'
+          loadListClientes()
+        } else showMessage(data.error || 'Error al actualizar cliente','error')
+      }catch(err){ console.error(err); showMessage('Error de red','error') }
+    })
+  }
+  
+  // Edit Proveedor Modal
+  const editProveedorForm = document.getElementById('editProveedorForm')
+  const cancelEditProveedorBtn = document.getElementById('cancelEditProveedorBtn')
+  if (cancelEditProveedorBtn) cancelEditProveedorBtn.addEventListener('click', ()=>{ document.getElementById('editProveedorModal').style.display = 'none' })
+  if (editProveedorForm){
+    editProveedorForm.addEventListener('submit', async (e)=>{
+      e.preventDefault()
+      const id = document.getElementById('editProveedorId').value
+      const payload = {
+        nombre: document.getElementById('editProveedorNombre').value,
+        contacto: document.getElementById('editProveedorContacto').value,
+        telefono: document.getElementById('editProveedorTelefono').value,
+        email: document.getElementById('editProveedorEmail').value,
+        direccion: document.getElementById('editProveedorDireccion').value
+      }
+      try{
+        const res = await fetch(`${API_BASE_URL}/proveedores/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+        const data = await res.json()
+        if (res.ok){ 
+          showMessage('Proveedor actualizado','success')
+          document.getElementById('editProveedorModal').style.display = 'none'
+          loadListProveedores()
+        } else showMessage(data.error || 'Error al actualizar proveedor','error')
       }catch(err){ console.error(err); showMessage('Error de red','error') }
     })
   }
@@ -821,7 +898,113 @@ async function handleAddProduct(e){
   }catch(err){ console.error(err); showMessage('Error de red','error') }
 }
 
-// Sales
+// Sales - Payment management
+function addPaymentRow() {
+  const container = document.getElementById('paymentsContainer')
+  if (!container) return
+  
+  // Limitar a 2 formas de pago
+  const existing = container.querySelectorAll('.payment-row')
+  if (existing.length >= 2) {
+    showMessage('Máximo 2 formas de pago permitidas', 'error')
+    return
+  }
+  
+  const row = document.createElement('div')
+  row.className = 'payment-row'
+  row.style.display = 'grid'
+  row.style.gridTemplateColumns = '2fr 1fr auto'
+  row.style.gap = '10px'
+  row.style.alignItems = 'center'
+  row.style.padding = '10px'
+  row.style.background = '#f8fafc'
+  row.style.borderRadius = '8px'
+  row.style.border = '1px solid #e2e8f0'
+  
+  row.innerHTML = `
+    <select required style="padding:10px;font-weight:500;">
+      <option value="efectivo">💵 Efectivo</option>
+      <option value="tarjeta">💳 Tarjeta</option>
+      <option value="qr">📱 QR</option>
+      <option value="transferencia">🏦 Transferencia</option>
+    </select>
+    <input type="number" step="0.01" min="0" placeholder="Monto" required style="padding:10px;text-align:right;">
+    <button type="button" class="remove-payment-btn" style="background:#ef4444;color:white;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:600;">✕</button>
+  `
+  
+  container.appendChild(row)
+  
+  // Event listener para eliminar
+  row.querySelector('.remove-payment-btn').addEventListener('click', () => {
+    row.remove()
+    updatePaymentButton()
+  })
+  
+  // Auto-completar monto si es el primer pago
+  if (existing.length === 0) {
+    const totalValue = document.getElementById('saleTotalValue')
+    if (totalValue) {
+      const total = parseFloat(totalValue.textContent.replace('$', '').replace(',', '')) || 0
+      const input = row.querySelector('input[type="number"]')
+      if (input) input.value = total.toFixed(2)
+    }
+  }
+  
+  updatePaymentButton()
+}
+
+function updatePaymentButton() {
+  const btn = document.getElementById('addPaymentBtn')
+  const container = document.getElementById('paymentsContainer')
+  if (!btn || !container) return
+  
+  const count = container.querySelectorAll('.payment-row').length
+  if (count >= 2) {
+    btn.disabled = true
+    btn.style.opacity = '0.5'
+    btn.style.cursor = 'not-allowed'
+  } else {
+    btn.disabled = false
+    btn.style.opacity = '1'
+    btn.style.cursor = 'pointer'
+  }
+}
+
+function initPaymentSystem() {
+  console.log('Inicializando sistema de pagos...')
+  const container = document.getElementById('paymentsContainer')
+  const btn = document.getElementById('addPaymentBtn')
+  
+  if (!container) {
+    console.error('paymentsContainer no encontrado')
+    return
+  }
+  if (!btn) {
+    console.error('addPaymentBtn no encontrado')
+    return
+  }
+  
+  console.log('Elementos encontrados, limpiando container...')
+  // Limpiar container primero
+  container.innerHTML = ''
+  
+  // Remover event listeners anteriores clonando el botón
+  const newBtn = btn.cloneNode(true)
+  btn.parentNode.replaceChild(newBtn, btn)
+  
+  console.log('Agregando event listener al botón...')
+  // Agregar event listener limpio
+  newBtn.addEventListener('click', () => {
+    console.log('Botón Agregar Pago clickeado')
+    addPaymentRow()
+  })
+  
+  console.log('Agregando primer pago por defecto...')
+  // Agregar el primer pago por defecto
+  addPaymentRow()
+  console.log('Sistema de pagos inicializado correctamente')
+}
+
 function addSaleItemRow(){
   if (!productsCache) return
   // prevent adding items if no caja abierta
@@ -855,14 +1038,24 @@ async function handleNewSale(e){
   const caja = await getCajaActual()
   if (!caja) return showMessage('No hay caja abierta. Abre la caja antes de registrar ventas.','error')
   
-  // Obtener tipo de pago
-  const tipoPagoSelect = document.getElementById('tipoPago')
-  const tipo_pago = tipoPagoSelect ? tipoPagoSelect.value : 'efectivo'
-  if (!tipo_pago) return showMessage('Selecciona un tipo de pago','error')
+  // Obtener formas de pago (puede haber 1 o 2)
+  const paymentRows = document.querySelectorAll('.payment-row')
+  if (paymentRows.length === 0) return showMessage('Agrega al menos una forma de pago','error')
+  
+  const pagos = []
+  let totalPagos = 0
+  for (const row of paymentRows) {
+    const tipo = row.querySelector('select').value
+    const monto = Number(row.querySelector('input[type="number"]').value)
+    if (!tipo || monto <= 0) return showMessage('Verifica los datos de pago','error')
+    pagos.push({ tipo_pago: tipo, monto })
+    totalPagos += monto
+  }
   
   const rows = [...refs.saleProductsContainer.querySelectorAll('.sale-item')]
   if (rows.length === 0) return showMessage('Agrega al menos un producto','error')
   let valid = true;
+  let totalVenta = 0;
   const items = rows.map(r => {
     const producto_id = Number(r.querySelector('select').value);
     const cantidad = Number(r.querySelector('input[name="cantidad"]').value);
@@ -874,11 +1067,17 @@ async function handleNewSale(e){
     // El precio unitario está en el input de precio (segundo input)
     const priceInput = r.querySelectorAll('input')[1];
     const precio_unitario = priceInput ? Number(priceInput.value) : 0;
+    totalVenta += precio_unitario * cantidad;
     return { producto_id, cantidad, precio_unitario };
   });
   if (!valid) {
     showMessage('No puedes vender más unidades de las disponibles en stock','error');
     return;
+  }
+  
+  // Validar que el total de pagos coincida con el total de la venta
+  if (Math.abs(totalPagos - totalVenta) > 0.01) {
+    return showMessage(`El total de pagos ($${totalPagos.toFixed(2)}) no coincide con el total de la venta ($${totalVenta.toFixed(2)})`, 'error')
   }
   // incluir datos de envio si aplica
   const envioCheckboxEl = document.getElementById('envioCheckbox')
@@ -899,7 +1098,7 @@ async function handleNewSale(e){
       }
     }
   }
-  const payload = { usuario_id: currentUser.id, items, tipo_pago, envio }
+  const payload = { usuario_id: currentUser.id, items, pagos, envio }
   console.log('Payload venta:', payload) // DEBUG
   try{
     const res = await fetch(`${API_BASE_URL}/ventas`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
@@ -922,6 +1121,12 @@ async function handleNewSale(e){
       if (newCaja) loadMovements(newCaja.id)
       // Cleanup envio UI and any cliente forms/modals
       try{
+        // Limpiar pagos
+        const paymentsContainer = document.getElementById('paymentsContainer')
+        if (paymentsContainer) paymentsContainer.innerHTML = ''
+        // Reinicializar con un pago vacío
+        initPaymentSystem()
+        
         if (envioCheckboxEl) { envioCheckboxEl.checked = false; toggleEnvioUI(false) }
         const clienteNewFormEl = document.getElementById('clienteNewForm')
         if (clienteNewFormEl) { if (clienteNewFormEl.reset) clienteNewFormEl.reset(); clienteNewFormEl.style.display = 'none' }
@@ -955,7 +1160,9 @@ async function searchClients(q){
     const res = await fetch(url)
     if (!res.ok) return showMessage('Error buscando clientes','error')
     const data = await res.json()
-    renderClientSearchResults(data.clientes || [])
+    // Filtrar solo clientes activos o deudores (no inactivos)
+    const clientesActivos = (data.clientes || []).filter(c => c.estado !== 'inactivo')
+    renderClientSearchResults(clientesActivos)
   }catch(err){ console.error(err); showMessage('Error buscando clientes','error') }
 }
 
@@ -1108,10 +1315,12 @@ async function openStockPedidos(){
   // Ensure products and providers loaded
   ensureProductsLoaded()
   const proveedores = await loadProveedores()
+  // Filtrar solo proveedores activos
+  const proveedoresActivos = proveedores.filter(p => p.estado === 'activo' || !p.estado)
   const sel = document.getElementById('proveedorFilter')
   if (sel){
     sel.innerHTML = '<option value="">-- Seleccionar proveedor --</option>'
-    proveedores.forEach(p=>{ const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.nombre; sel.appendChild(opt) })
+    proveedoresActivos.forEach(p=>{ const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.nombre; sel.appendChild(opt) })
     // Add listener to filter products when provider changes
     sel.addEventListener('change', ()=>{ 
       renderStockPedidoSearch()
@@ -1798,7 +2007,7 @@ async function loadSales(date = null){
     const tbody = refs.salesTable.querySelector('tbody')
     if (!tbody) return
 
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Cargando...</td></tr>'
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Cargando...</td></tr>'
 
     const res = await fetch(`${API_BASE_URL}/ventas`)
     if (!res.ok) {
@@ -1820,7 +2029,7 @@ async function loadSales(date = null){
     }
 
     if (salesToShow.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748b;">No hay ventas para mostrar</td></tr>'
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #64748b;">No hay ventas para mostrar</td></tr>'
       return
     }
 
@@ -1836,10 +2045,66 @@ async function loadSales(date = null){
       const total = Number(sale.total)
       totalVentas += total
       
+      // Determinar estado de entrega
+      let estadoEntrega = 'Retiro en local'
+      let estadoColor = '#64748b'
+      if (sale.estado_entrega) {
+        switch(sale.estado_entrega) {
+          case 'pendiente':
+            estadoEntrega = '📦 Pendiente'
+            estadoColor = '#f59e0b'
+            break
+          case 'enviado':
+            estadoEntrega = '🚚 En camino'
+            estadoColor = '#3b82f6'
+            break
+          case 'entregado':
+            estadoEntrega = '✅ Entregado'
+            estadoColor = '#10b981'
+            break
+        }
+      }
+      
+      // Determinar tipos de pago (puede haber múltiples)
+      let tipoPagoDisplay = 'N/A'
+      if (sale.tipos_pago) {
+        const tipos = sale.tipos_pago.split(', ')
+        const montos = sale.montos_pago ? sale.montos_pago.split(', ') : []
+        
+        const pagosFormatted = tipos.map((tipo, idx) => {
+          let icon = ''
+          let nombre = tipo
+          switch(tipo) {
+            case 'efectivo':
+              icon = '💵'
+              nombre = 'Efectivo'
+              break
+            case 'tarjeta':
+              icon = '💳'
+              nombre = 'Tarjeta'
+              break
+            case 'qr':
+              icon = '📱'
+              nombre = 'QR'
+              break
+            case 'transferencia':
+              icon = '🏦'
+              nombre = 'Transf.'
+              break
+          }
+          const monto = montos[idx] ? ` $${Number(montos[idx]).toFixed(2)}` : ''
+          return `${icon} ${nombre}${monto}`
+        })
+        
+        tipoPagoDisplay = pagosFormatted.join('<br>')
+      }
+      
       tr.innerHTML = `
         <td>${sale.id}</td>
         <td>${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString()}</td>
         <td style="text-align: right;">$${total.toFixed(2)}</td>
+        <td style="color: ${estadoColor}; font-weight: 500;">${estadoEntrega}</td>
+        <td>${tipoPagoDisplay}</td>
         <td>${sale.vendedor || ''}</td>
       `
       tbody.appendChild(tr)
@@ -1852,7 +2117,7 @@ async function loadSales(date = null){
     trTotal.innerHTML = `
       <td colspan="2" style="text-align: right;">Total:</td>
       <td style="text-align: right;">$${totalVentas.toFixed(2)}</td>
-      <td></td>
+      <td colspan="3"></td>
     `
     tbody.appendChild(trTotal)
 
@@ -1998,6 +2263,435 @@ function showUserMenu(){
   // Si existe el userDropdown, eliminarlo
   const ud = document.getElementById('userDropdown')
   if (ud && refs.navMenu.contains(ud)) refs.navMenu.removeChild(ud)
+}
+
+// ========== LISTAS: Productos, Clientes, Proveedores con Estados ==========
+
+async function loadListProducts() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/productos`)
+    const data = await res.json()
+    const productos = data.productos || []
+    const tbody = document.getElementById('listProductsTable')?.querySelector('tbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    
+    productos.forEach(p => {
+      const tr = document.createElement('tr')
+      const estadoBadge = p.estado === 'activo' 
+        ? '<span style="background:#10b981;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✓ Activo</span>'
+        : '<span style="background:#ef4444;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✕ Inactivo</span>'
+      
+      tr.innerHTML = `
+        <td>${p.id}</td>
+        <td>${escapeHtml(p.nombre)}</td>
+        <td class="description">${escapeHtml(p.descripcion||'')}</td>
+        <td>$${Number(p.precio).toFixed(2)}</td>
+        <td>${p.stock}</td>
+        <td>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
+            ${estadoBadge}
+            <select class="estado-select" data-id="${p.id}" data-tipo="producto" style="padding:6px;border-radius:4px;border:1px solid #cbd5e1;font-weight:500;width:100%;">
+              <option value="activo" ${p.estado==='activo'?'selected':''}>Activo</option>
+              <option value="inactivo" ${p.estado==='inactivo'?'selected':''}>Inactivo</option>
+            </select>
+          </div>
+        </td>
+        <td>
+          <button class="edit-btn edit-product-btn" data-id="${p.id}">Editar</button>
+        </td>
+      `
+      tbody.appendChild(tr)
+    })
+    
+    // Attach change handlers
+    tbody.querySelectorAll('.estado-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const id = e.target.dataset.id
+        const nuevoEstado = e.target.value
+        await cambiarEstadoProducto(id, nuevoEstado)
+      })
+    })
+    
+    // Attach edit button handlers
+    tbody.querySelectorAll('.edit-product-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.dataset.id
+        const res = await fetch(`${API_BASE_URL}/productos`)
+        const data = await res.json()
+        const producto = (data.productos || []).find(p => p.id == id)
+        if (producto) openEditProductModal(producto)
+      })
+    })
+  } catch(err) {
+    console.error(err)
+    showMessage('Error cargando lista de productos','error')
+  }
+}
+
+function openEditProductModal(p) {
+  const modal = document.getElementById('editProductModal')
+  if (!modal) return
+  document.getElementById('editProductId').value = p.id
+  document.getElementById('editNombre').value = p.nombre || ''
+  document.getElementById('editDescripcion').value = p.descripcion || ''
+  document.getElementById('editPrecio').value = p.precio || 0
+  document.getElementById('editStock').value = p.stock || 0
+  modal.style.display = 'flex'
+}
+
+async function cambiarEstadoProducto(id, estado) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/productos/${id}/estado`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ estado })
+    })
+    const data = await res.json()
+    if (res.ok) {
+      showMessage('Estado actualizado','success')
+      loadListProducts()
+    } else {
+      showMessage(data.error || 'Error actualizando estado','error')
+    }
+  } catch(err) {
+    console.error(err)
+    showMessage('Error de red','error')
+  }
+}
+
+async function loadListClientes() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/clientes`)
+    const data = await res.json()
+    const clientes = data.clientes || []
+    const tbody = document.getElementById('listClientesTable')?.querySelector('tbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    
+    clientes.forEach(c => {
+      const tr = document.createElement('tr')
+      let estadoBadge = ''
+      if (c.estado === 'activo') {
+        estadoBadge = '<span style="background:#10b981;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✓ Activo</span>'
+      } else if (c.estado === 'deudor') {
+        estadoBadge = '<span style="background:#f59e0b;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">⚠ Deudor</span>'
+      } else {
+        estadoBadge = '<span style="background:#ef4444;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✕ Inactivo</span>'
+      }
+      
+      tr.innerHTML = `
+        <td>${c.id}</td>
+        <td>${escapeHtml(c.nombre)}</td>
+        <td>${escapeHtml(c.telefono||'')}</td>
+        <td>${escapeHtml(c.direccion||'')}</td>
+        <td>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
+            ${estadoBadge}
+            <select class="estado-select" data-id="${c.id}" data-tipo="cliente" style="padding:6px;border-radius:4px;border:1px solid #cbd5e1;font-weight:500;width:100%;">
+              <option value="activo" ${c.estado==='activo'?'selected':''}>Activo</option>
+              <option value="inactivo" ${c.estado==='inactivo'?'selected':''}>Inactivo</option>
+              <option value="deudor" ${c.estado==='deudor'?'selected':''}>Deudor</option>
+            </select>
+          </div>
+        </td>
+        <td>
+          <button class="edit-btn edit-cliente-btn" data-id="${c.id}">Editar</button>
+        </td>
+      `
+      tbody.appendChild(tr)
+    })
+    
+    // Attach change handlers
+    tbody.querySelectorAll('.estado-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const id = e.target.dataset.id
+        const nuevoEstado = e.target.value
+        await cambiarEstadoCliente(id, nuevoEstado)
+      })
+    })
+    
+    // Attach edit button handlers
+    tbody.querySelectorAll('.edit-cliente-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.dataset.id
+        const res = await fetch(`${API_BASE_URL}/clientes`)
+        const data = await res.json()
+        const cliente = (data.clientes || []).find(c => c.id == id)
+        if (cliente) openEditClienteModal(cliente)
+      })
+    })
+  } catch(err) {
+    console.error(err)
+    showMessage('Error cargando lista de clientes','error')
+  }
+}
+
+function openEditClienteModal(c) {
+  const modal = document.getElementById('editClienteModal')
+  if (!modal) return
+  document.getElementById('editClienteId').value = c.id
+  document.getElementById('editClienteNombre').value = c.nombre || ''
+  document.getElementById('editClienteTelefono').value = c.telefono || ''
+  document.getElementById('editClienteDireccion').value = c.direccion || ''
+  modal.style.display = 'flex'
+}
+
+async function cambiarEstadoCliente(id, estado) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/clientes/${id}/estado`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ estado })
+    })
+    const data = await res.json()
+    if (res.ok) {
+      showMessage('Estado actualizado','success')
+      loadListClientes()
+    } else {
+      showMessage(data.error || 'Error actualizando estado','error')
+    }
+  } catch(err) {
+    console.error(err)
+    showMessage('Error de red','error')
+  }
+}
+
+async function loadListProveedores() {
+  try {
+    const proveedores = await loadProveedores() // Reusa función existente
+    const tbody = document.getElementById('listProveedoresTable')?.querySelector('tbody')
+    if (!tbody) return
+    tbody.innerHTML = ''
+    
+    proveedores.forEach(p => {
+      const tr = document.createElement('tr')
+      const estadoBadge = p.estado === 'activo' 
+        ? '<span style="background:#10b981;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✓ Activo</span>'
+        : '<span style="background:#ef4444;color:white;padding:4px 8px;border-radius:4px;font-size:0.85rem;font-weight:600;">✕ Inactivo</span>'
+      
+      tr.innerHTML = `
+        <td>${p.id}</td>
+        <td>${escapeHtml(p.nombre)}</td>
+        <td>${escapeHtml(p.contacto||'')}</td>
+        <td>${escapeHtml(p.telefono||'')}</td>
+        <td>${escapeHtml(p.email||'')}</td>
+        <td>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
+            ${estadoBadge}
+            <select class="estado-select" data-id="${p.id}" data-tipo="proveedor" style="padding:6px;border-radius:4px;border:1px solid #cbd5e1;font-weight:500;width:100%;">
+              <option value="activo" ${p.estado==='activo'?'selected':''}>Activo</option>
+              <option value="inactivo" ${p.estado==='inactivo'?'selected':''}>Inactivo</option>
+            </select>
+          </div>
+        </td>
+        <td>
+          <button class="edit-btn edit-proveedor-btn" data-id="${p.id}">Editar</button>
+        </td>
+      `
+      tbody.appendChild(tr)
+    })
+    
+    // Attach change handlers
+    tbody.querySelectorAll('.estado-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const id = e.target.dataset.id
+        const nuevoEstado = e.target.value
+        await cambiarEstadoProveedor(id, nuevoEstado)
+      })
+    })
+    
+    // Attach edit button handlers
+    tbody.querySelectorAll('.edit-proveedor-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.dataset.id
+        const proveedores = await loadProveedores()
+        const proveedor = proveedores.find(p => p.id == id)
+        if (proveedor) openEditProveedorModal(proveedor)
+      })
+    })
+  } catch(err) {
+    console.error(err)
+    showMessage('Error cargando lista de proveedores','error')
+  }
+}
+
+function openEditProveedorModal(p) {
+  const modal = document.getElementById('editProveedorModal')
+  if (!modal) return
+  document.getElementById('editProveedorId').value = p.id
+  document.getElementById('editProveedorNombre').value = p.nombre || ''
+  document.getElementById('editProveedorContacto').value = p.contacto || ''
+  document.getElementById('editProveedorTelefono').value = p.telefono || ''
+  document.getElementById('editProveedorEmail').value = p.email || ''
+  document.getElementById('editProveedorDireccion').value = p.direccion || ''
+  modal.style.display = 'flex'
+}
+
+async function cambiarEstadoProveedor(id, estado) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/proveedores/${id}/estado`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ estado })
+    })
+    const data = await res.json()
+    if (res.ok) {
+      showMessage('Estado actualizado','success')
+      loadListProveedores()
+    } else {
+      showMessage(data.error || 'Error actualizando estado','error')
+    }
+  } catch(err) {
+    console.error(err)
+    showMessage('Error de red','error')
+  }
+}
+
+// ========== HISTORIAL DE PRECIOS ==========
+
+function initHistorialSection() {
+  const searchInput = document.getElementById('historialProductoSearch')
+  const searchBtn = document.getElementById('historialSearchBtn')
+  
+  if (searchInput) {
+    searchInput.value = ''
+    searchInput.focus()
+  }
+  
+  // Limpiar resultados previos
+  document.getElementById('historialProductoInfo').style.display = 'none'
+  document.getElementById('historialTable').style.display = 'none'
+  document.getElementById('historialEmpty').style.display = 'block'
+  
+  // Event listeners
+  if (searchBtn) {
+    searchBtn.addEventListener('click', buscarHistorialProducto)
+  }
+  
+  if (searchInput) {
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        buscarHistorialProducto()
+      }
+    })
+  }
+}
+
+async function buscarHistorialProducto() {
+  const searchInput = document.getElementById('historialProductoSearch')
+  const query = (searchInput?.value || '').trim()
+  
+  if (!query) {
+    showMessage('Ingresa el nombre de un producto', 'error')
+    return
+  }
+  
+  try {
+    // Buscar productos por nombre
+    const res = await fetch(`${API_BASE_URL}/productos`)
+    const data = await res.json()
+    const productos = (data.productos || []).filter(p => 
+      p.nombre.toLowerCase().includes(query.toLowerCase())
+    )
+    
+    if (productos.length === 0) {
+      showMessage('No se encontró ningún producto con ese nombre', 'error')
+      document.getElementById('historialProductoInfo').style.display = 'none'
+      document.getElementById('historialTable').style.display = 'none'
+      document.getElementById('historialEmpty').style.display = 'block'
+      return
+    }
+    
+    // Si hay múltiples resultados, usar el primero
+    const producto = productos[0]
+    
+    if (productos.length > 1) {
+      showMessage(`Se encontraron ${productos.length} productos. Mostrando: ${producto.nombre}`, 'success')
+    }
+    
+    // Cargar historial del producto
+    await cargarHistorialProducto(producto)
+    
+  } catch (err) {
+    console.error(err)
+    showMessage('Error buscando producto', 'error')
+  }
+}
+
+async function cargarHistorialProducto(producto) {
+  try {
+    console.log('Cargando historial para producto:', producto)
+    const res = await fetch(`${API_BASE_URL}/productos/${producto.id}/historial`)
+    console.log('Response status:', res.status)
+    const data = await res.json()
+    console.log('Historial data:', data)
+    const historial = data.historial || []
+    console.log('Historial array:', historial, 'Length:', historial.length)
+    
+    // Mostrar info del producto
+    document.getElementById('historialProductoNombre').textContent = producto.nombre
+    document.getElementById('historialPrecioActual').textContent = `$${Number(producto.precio).toFixed(2)}`
+    document.getElementById('historialProductoInfo').style.display = 'block'
+    
+    const tbody = document.getElementById('historialTable')?.querySelector('tbody')
+    console.log('tbody encontrado:', !!tbody)
+    if (!tbody) return
+    
+    tbody.innerHTML = ''
+    
+    if (historial.length === 0) {
+      console.log('No hay historial, mostrando mensaje vacío')
+      document.getElementById('historialTable').style.display = 'none'
+      document.getElementById('historialEmpty').innerHTML = '<p>📋 Este producto no tiene cambios registrados</p>'
+      document.getElementById('historialEmpty').style.display = 'block'
+      return
+    }
+    
+    document.getElementById('historialEmpty').style.display = 'none'
+    document.getElementById('historialTable').style.display = 'table'
+    
+    historial.forEach(h => {
+      const tr = document.createElement('tr')
+      
+      // Formatear fecha
+      const fecha = new Date(h.fecha_cambio)
+      const fechaStr = fecha.toLocaleString('es-AR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+      
+      // Detectar cambios en precio
+      const precioChanged = Number(h.precio_anterior) !== Number(h.precio_nuevo)
+      const stockChanged = Number(h.stock_anterior) !== Number(h.stock_nuevo)
+      const nombreChanged = h.nombre_anterior !== h.nombre_nuevo
+      
+      tr.innerHTML = `
+        <td>${fechaStr}</td>
+        <td><strong>${escapeHtml(h.usuario_nombre || 'Desconocido')}</strong></td>
+        <td>
+          ${nombreChanged 
+            ? `<span style="color:#ef4444;">${escapeHtml(h.nombre_anterior)}</span> → <span style="color:#10b981;">${escapeHtml(h.nombre_nuevo)}</span>` 
+            : escapeHtml(h.nombre_nuevo || h.nombre_anterior)
+          }
+        </td>
+        <td style="${precioChanged ? 'background:#fee;' : ''}">$${Number(h.precio_anterior).toFixed(2)}</td>
+        <td style="${precioChanged ? 'background:#efe;font-weight:bold;' : ''}">$${Number(h.precio_nuevo).toFixed(2)}</td>
+        <td style="${stockChanged ? 'background:#fee;' : ''}">${h.stock_anterior}</td>
+        <td style="${stockChanged ? 'background:#efe;font-weight:bold;' : ''}">${h.stock_nuevo}</td>
+      `
+      
+      tbody.appendChild(tr)
+    })
+    
+  } catch (err) {
+    console.error(err)
+    showMessage('Error cargando historial', 'error')
+  }
 }
 
 // Start

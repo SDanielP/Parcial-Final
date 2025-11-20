@@ -87,11 +87,34 @@ router.post('/login', async (req, res) => {
 });
 
 // Productos endpoints
-// GET /api/productos -> list products
+// GET /api/productos -> list products (incluye inactivos para gestión, filtra en ventas)
 router.get('/productos', async (req, res) => {
   try {
-    const products = await query('SELECT id, nombre, descripcion, precio, stock, creado_en FROM productos ORDER BY nombre');
+    const products = await query('SELECT id, nombre, descripcion, precio, stock, proveedor_id, categoria, estado, creado_en FROM productos ORDER BY nombre');
     res.json({ productos: products });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/productos/activos -> list only active products (para ventas)
+router.get('/productos/activos', async (req, res) => {
+  try {
+    const products = await query("SELECT id, nombre, descripcion, precio, stock, proveedor_id, categoria, estado, creado_en FROM productos WHERE estado = 'activo' ORDER BY nombre");
+    res.json({ productos: products });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/productos/:id/estado -> cambiar estado del producto
+router.put('/productos/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  if (!['activo', 'inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+  try {
+    await query('UPDATE productos SET estado = ? WHERE id = ?', [estado, id]);
+    res.json({ message: 'Estado actualizado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -128,7 +151,7 @@ router.get('/proveedores', async (req, res) => {
     // verify table existence
     const tbl = await query("SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'proveedores'")
     if (!tbl || tbl[0].cnt === 0) return res.json({ proveedores: [] })
-    const rows = await query('SELECT id, nombre, contacto, telefono, email, direccion FROM proveedores ORDER BY nombre')
+    const rows = await query('SELECT id, nombre, contacto, telefono, email, direccion, estado FROM proveedores ORDER BY nombre')
     res.json({ proveedores: rows })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -245,12 +268,12 @@ router.get('/clientes', async (req, res) => {
   try {
     if (!q) {
       // devolver clientes (sin email para compatibilidad con esquemas antiguos)
-      const rows = await query('SELECT id, nombre, telefono, direccion, creado_en FROM clientes ORDER BY creado_en DESC LIMIT 100');
+      const rows = await query('SELECT id, nombre, telefono, direccion, estado, creado_en FROM clientes ORDER BY creado_en DESC LIMIT 100');
       return res.json({ clientes: rows });
     }
     const like = `%${q}%`;
     // Buscar por nombre o telefono (compatibilizar si no existe columna email)
-    const rows = await query('SELECT id, nombre, telefono, direccion FROM clientes WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre LIMIT 50', [like, like]);
+    const rows = await query('SELECT id, nombre, telefono, direccion, estado FROM clientes WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre LIMIT 50', [like, like]);
     res.json({ clientes: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -370,26 +393,88 @@ router.put('/pedidos/:id/estado', async (req, res) => {
   }
 })
 
-// PUT /api/productos/:id -> update product
+// PUT /api/productos/:id -> update product (con historial de cambios)
 router.put('/productos/:id', async (req, res) => {
   const { id } = req.params;
-  const { nombre, descripcion, precio, stock } = req.body;
+  const { nombre, descripcion, precio, stock, usuario_id } = req.body;
   if (!nombre || precio == null || stock == null) return res.status(400).json({ error: 'Faltan datos requeridos' });
+  
   try {
-    await query('UPDATE productos SET nombre = ?, descripcion = ?, precio = ?, stock = ? WHERE id = ?', [nombre, descripcion || '', precio, stock, id]);
-    res.json({ message: 'Producto actualizado' });
+    // Obtener datos anteriores del producto
+    const productosAnteriores = await query('SELECT nombre, descripcion, precio, stock FROM productos WHERE id = ?', [id]);
+    
+    if (!productosAnteriores || productosAnteriores.length === 0) {
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+    
+    const productoAnterior = productosAnteriores[0];
+    
+    // Verificar si hubo cambios
+    const hubo_cambios = 
+      productoAnterior.nombre !== nombre ||
+      productoAnterior.descripcion !== (descripcion || '') ||
+      Number(productoAnterior.precio) !== Number(precio) ||
+      Number(productoAnterior.stock) !== Number(stock);
+    
+    // Si hubo cambios y se proporcionó usuario_id, registrar en historial
+    if (hubo_cambios && usuario_id) {
+      await query(
+        `INSERT INTO historico_productos 
+        (producto_id, usuario_id, nombre_anterior, descripcion_anterior, precio_anterior, stock_anterior, 
+         nombre_nuevo, descripcion_nueva, precio_nuevo, stock_nuevo) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id, 
+          usuario_id, 
+          productoAnterior.nombre, 
+          productoAnterior.descripcion, 
+          productoAnterior.precio, 
+          productoAnterior.stock,
+          nombre,
+          descripcion || '',
+          precio,
+          stock
+        ]
+      );
+    }
+    
+    // Actualizar producto
+    await query('UPDATE productos SET nombre = ?, descripcion = ?, precio = ?, stock = ? WHERE id = ?', 
+      [nombre, descripcion || '', precio, stock, id]);
+    
+    res.json({ message: 'Producto actualizado', historial_registrado: hubo_cambios && usuario_id });
   } catch (err) {
+    console.error('Error actualizando producto:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/productos/:id/historial -> obtener historial de cambios de un producto
+router.get('/productos/:id/historial', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const historial = await query(
+      `SELECT h.*, u.usuario as usuario_nombre 
+       FROM historico_productos h 
+       LEFT JOIN usuarios u ON h.usuario_id = u.id 
+       WHERE h.producto_id = ? 
+       ORDER BY h.fecha_cambio DESC`,
+      [id]
+    );
+    res.json({ historial });
+  } catch (err) {
+    console.error('Error obteniendo historial:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // Ventas endpoints
 // POST /api/ventas -> create a sale
-// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], tipo_pago, envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
+// body: { usuario_id, items: [{ producto_id, cantidad, precio_unitario }], pagos: [{ tipo_pago, monto }], envio: { enabled: boolean, cliente_id, direccion, cliente: { nombre, telefono } } }
 router.post('/ventas', async (req, res) => {
-  const { usuario_id, items, tipo_pago, envio } = req.body;
+  const { usuario_id, items, pagos, envio } = req.body;
   if (!usuario_id || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Faltan datos de la venta' });
-  if (!tipo_pago) return res.status(400).json({ error: 'Tipo de pago requerido' });
+  if (!Array.isArray(pagos) || pagos.length === 0) return res.status(400).json({ error: 'Debe especificar al menos una forma de pago' });
   
   const conn = await pool.promise().getConnection();
   try {
@@ -401,8 +486,10 @@ router.post('/ventas', async (req, res) => {
   const [ventaResult] = await conn.query('INSERT INTO ventas (total, usuario_id) VALUES (?, ?)', [total, usuario_id]);
     const ventaId = ventaResult.insertId;
     
-    // Registrar el pago
-    await conn.query('INSERT INTO pagos (venta_id, tipo_pago, monto) VALUES (?, ?, ?)', [ventaId, tipo_pago, total]);
+    // Registrar los pagos (puede ser 1 o más)
+    for (const pago of pagos) {
+      await conn.query('INSERT INTO pagos (venta_id, tipo_pago, monto) VALUES (?, ?, ?)', [ventaId, pago.tipo_pago, pago.monto]);
+    }
     
     for (const it of items) {
       await conn.query('INSERT INTO detalle_venta (venta_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)', [ventaId, it.producto_id, it.cantidad, it.precio_unitario]);
@@ -471,10 +558,25 @@ router.get('/debug/movimientos_recent', async (req, res) => {
   }catch(err){ res.status(500).json({ error: err.message }) }
 })
 
-// GET /api/ventas -> list ventas with total and date
+// GET /api/ventas -> list ventas with total, date, delivery status and payment types
 router.get('/ventas', async (req, res) => {
   try {
-    const ventas = await query('SELECT v.id, v.fecha, v.total, u.usuario as vendedor FROM ventas v LEFT JOIN usuarios u ON v.usuario_id = u.id ORDER BY v.fecha DESC');
+    const ventas = await query(`
+      SELECT 
+        v.id, 
+        v.fecha, 
+        v.total, 
+        u.usuario as vendedor,
+        p.estado as estado_entrega,
+        GROUP_CONCAT(DISTINCT pg.tipo_pago ORDER BY pg.id SEPARATOR ', ') as tipos_pago,
+        GROUP_CONCAT(DISTINCT pg.monto ORDER BY pg.id SEPARATOR ', ') as montos_pago
+      FROM ventas v 
+      LEFT JOIN usuarios u ON v.usuario_id = u.id
+      LEFT JOIN pedidos p ON v.id = p.venta_id
+      LEFT JOIN pagos pg ON v.id = pg.venta_id
+      GROUP BY v.id, v.fecha, v.total, u.usuario, p.estado
+      ORDER BY v.fecha DESC
+    `);
     res.json({ ventas });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -575,6 +677,74 @@ router.get('/caja/ultima', async (req, res) => {
     const rows = await query('SELECT * FROM caja ORDER BY fecha DESC LIMIT 1');
     if (rows.length === 0) return res.json({ caja: null });
     res.json({ caja: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== ENDPOINTS PARA CAMBIO DE ESTADOS ==========
+
+// PUT /api/productos/:id/estado -> cambiar estado del producto
+router.put('/productos/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  if (!['activo', 'inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+  try {
+    await query('UPDATE productos SET estado = ? WHERE id = ?', [estado, id]);
+    res.json({ message: 'Estado actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/clientes/:id -> editar datos del cliente
+router.put('/clientes/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, telefono, direccion } = req.body;
+  if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+  try {
+    await query('UPDATE clientes SET nombre = ?, telefono = ?, direccion = ? WHERE id = ?', [nombre, telefono || '', direccion || '', id]);
+    res.json({ message: 'Cliente actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/clientes/:id/estado -> cambiar estado del cliente
+router.put('/clientes/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  if (!['activo', 'inactivo', 'deudor'].includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+  try {
+    await query('UPDATE clientes SET estado = ? WHERE id = ?', [estado, id]);
+    res.json({ message: 'Estado actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/proveedores/:id -> editar datos del proveedor
+router.put('/proveedores/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, contacto, telefono, email, direccion } = req.body;
+  if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+  try {
+    await query('UPDATE proveedores SET nombre = ?, contacto = ?, telefono = ?, email = ?, direccion = ? WHERE id = ?', 
+      [nombre, contacto || '', telefono || '', email || '', direccion || '', id]);
+    res.json({ message: 'Proveedor actualizado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/proveedores/:id/estado -> cambiar estado del proveedor
+router.put('/proveedores/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  if (!['activo', 'inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+  try {
+    await query('UPDATE proveedores SET estado = ? WHERE id = ?', [estado, id]);
+    res.json({ message: 'Estado actualizado' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

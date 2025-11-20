@@ -29,10 +29,9 @@
                     <div class="menu-item" style="position:relative;">
                         <button class="nav-btn" id="stockMenuBtn">Stock ▾</button>
                         <div id="stockSubmenu" style="display:none; position:absolute; left:0; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
-                            <a href="#" id="productsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Productos</a>
                             <a href="#" id="addProductLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Ingresar producto</a>
                             <a href="#" id="stockReportsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Reportes</a>
-                                <a href="#" id="stockPedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos Proveedores</a>
+                            <a href="#" id="stockPedidosLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Pedidos Proveedores</a>
                         </div>
                     </div>
                     <div class="menu-item" style="position:relative;">
@@ -41,6 +40,15 @@
                             <a href="#" id="cajaOpenLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Apertura</a>
                             <a href="#" id="cajaCloseLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Cierre</a>
                             <a href="#" id="cajaMovementsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Movimientos</a>
+                        </div>
+                    </div>
+                    <div class="menu-item" style="position:relative;">
+                        <button class="nav-btn" id="listasMenuBtn">Listas ▾</button>
+                        <div id="listasSubmenu" style="display:none; position:absolute; left:0; background:white; border-radius:8px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:100;">
+                            <a href="#" id="listProductsLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Productos</a>
+                            <a href="#" id="listClientesLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Clientes</a>
+                            <a href="#" id="listProveedoresLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Proveedores</a>
+                            <a href="#" id="listHistorialLink" style="display:block; padding:6px 12px; text-decoration:none; color:#333; white-space:nowrap;">Historial de Precios</a>
                         </div>
                     </div>
                 </div>
@@ -179,15 +187,15 @@
                             <span id="saleTotalValue" style="font-size:1.5rem;font-weight:700;color:#0f172a;">$0.00</span>
                         </div>
                         
-                        <!-- Tipo de pago -->
+                        <!-- Formas de pago (múltiples) -->
                         <div class="form-group" style="margin-top:20px;">
-                            <label for="tipoPago">💳 Tipo de Pago</label>
-                            <select id="tipoPago" name="tipoPago" required style="font-size:1rem;padding:12px;font-weight:600;">
-                                <option value="efectivo">💵 Efectivo</option>
-                                <option value="tarjeta">💳 Tarjeta</option>
-                                <option value="qr">📱 QR</option>
-                                <option value="transferencia">🏦 Transferencia</option>
-                            </select>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                                <label style="margin:0;">💳 Formas de Pago</label>
+                                <button type="button" id="addPaymentBtn" class="auth-btn" style="padding:8px 16px;font-size:0.9rem;background:#10b981;">+ Agregar Pago</button>
+                            </div>
+                            <div id="paymentsContainer" style="display:flex;flex-direction:column;gap:10px;">
+                                <!-- Pagos dinámicos aquí -->
+                            </div>
                         </div>
                         
                         <!-- Envío: checkbox y campos de cliente -->
@@ -224,7 +232,7 @@
                     <div id="noSalesMessage" style="display: none; text-align: center; padding: 20px; color: #64748b; font-size: 1.1rem; background: #f8fafc; border-radius: 8px; margin-bottom: 20px;">
                         No hay ventas registradas para la fecha seleccionada
                     </div>
-                    <table id="salesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Vendedor</th></tr></thead><tbody></tbody></table>
+                    <table id="salesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Estado Entrega</th><th>Tipo Pago</th><th>Vendedor</th></tr></thead><tbody></tbody></table>
                 </div>
             </div>
         </section>
@@ -241,12 +249,70 @@
             </div>
         </section>
 
-        <!-- Stock: Productos list -->
-        <section class="dashboard-section" id="productsSection" style="display:none;">
+        <!-- Listas: Productos -->
+        <section class="dashboard-section" id="listProductsSection" style="display:none;">
             <div class="dashboard-container">
-                <h1>Productos</h1>
+                <h1>Lista de Productos</h1>
                 <div class="dashboard-card">
-                    <table id="productsTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Descripcion</th><th>Precio</th><th>Stock</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                    <table id="listProductsTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Descripción</th><th>Precio</th><th>Stock</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Listas: Clientes -->
+        <section class="dashboard-section" id="listClientesSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Lista de Clientes</h1>
+                <div class="dashboard-card">
+                    <table id="listClientesTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Listas: Proveedores -->
+        <section class="dashboard-section" id="listProveedoresSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Lista de Proveedores</h1>
+                <div class="dashboard-card">
+                    <table id="listProveedoresTable" style="width:100%; border-collapse: collapse;"><thead><tr><th>ID</th><th>Nombre</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Listas: Historial de Precios -->
+        <section class="dashboard-section" id="listHistorialSection" style="display:none;">
+            <div class="dashboard-container">
+                <h1>Historial de Precios</h1>
+                <div class="dashboard-card" style="margin-bottom:20px;">
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <input type="text" id="historialProductoSearch" placeholder="Buscar producto por nombre..." style="flex:1;padding:12px;border-radius:8px;border:2px solid #cbd5e1;font-size:1rem;">
+                        <button class="auth-btn" id="historialSearchBtn">Buscar</button>
+                    </div>
+                </div>
+                <div id="historialProductoInfo" style="display:none;margin-bottom:20px;">
+                    <div class="dashboard-card" style="background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:2px solid #60a5fa;">
+                        <h3 style="margin:0 0 10px 0;color:#1e40af;">Producto: <span id="historialProductoNombre"></span></h3>
+                        <p style="margin:0;color:#1e3a8a;">Precio Actual: <strong id="historialPrecioActual"></strong></p>
+                    </div>
+                </div>
+                <div class="dashboard-card">
+                    <div id="historialEmpty" style="padding:20px;text-align:center;color:#64748b;">
+                        <p>🔍 Busca un producto para ver su historial de cambios</p>
+                    </div>
+                    <table id="historialTable" style="width:100%; border-collapse: collapse;display:none;">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Usuario</th>
+                                <th>Nombre</th>
+                                <th>Precio Anterior</th>
+                                <th>Precio Nuevo</th>
+                                <th>Stock Anterior</th>
+                                <th>Stock Nuevo</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
         </section>
@@ -415,7 +481,7 @@
 
     <!-- Edit Product Modal -->
     <div id="editProductModal" class="modal" style="display:none;">
-        <div class="modal-overlay"></div>
+        <div class="modal-overlay" onclick="document.getElementById('editProductModal').style.display='none'"></div>
         <div class="modal-content">
             <h3>Editar Producto</h3>
             <form id="editProductForm">
@@ -444,6 +510,44 @@
                 <div style="display:flex;gap:8px;margin-top:12px;">
                     <button type="button" id="clienteModalCreate" class="auth-btn">Crear cliente</button>
                     <button type="button" id="clienteModalCancel" class="auth-btn" style="background:#ef4444;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Editar Cliente -->
+    <div id="editClienteModal" class="modal" style="display:none;">
+        <div class="modal-overlay" onclick="document.getElementById('editClienteModal').style.display='none'"></div>
+        <div class="modal-content">
+            <h3>Editar Cliente</h3>
+            <form id="editClienteForm">
+                <input type="hidden" id="editClienteId">
+                <div class="form-group"><label>Nombre</label><input id="editClienteNombre" readonly style="background:#f1f5f9;cursor:not-allowed;"></div>
+                <div class="form-group"><label>Teléfono</label><input id="editClienteTelefono"></div>
+                <div class="form-group"><label>Dirección</label><input id="editClienteDireccion"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Guardar</button>
+                    <button type="button" id="cancelEditClienteBtn" class="auth-btn" style="background:#ef4444;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Editar Proveedor -->
+    <div id="editProveedorModal" class="modal" style="display:none;">
+        <div class="modal-overlay" onclick="document.getElementById('editProveedorModal').style.display='none'"></div>
+        <div class="modal-content">
+            <h3>Editar Proveedor</h3>
+            <form id="editProveedorForm">
+                <input type="hidden" id="editProveedorId">
+                <div class="form-group"><label>Nombre</label><input id="editProveedorNombre" readonly style="background:#f1f5f9;cursor:not-allowed;"></div>
+                <div class="form-group"><label>Contacto</label><input id="editProveedorContacto" readonly style="background:#f1f5f9;cursor:not-allowed;"></div>
+                <div class="form-group"><label>Teléfono</label><input id="editProveedorTelefono"></div>
+                <div class="form-group"><label>Email</label><input id="editProveedorEmail" type="email"></div>
+                <div class="form-group"><label>Dirección</label><input id="editProveedorDireccion"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button type="submit" class="auth-btn">Guardar</button>
+                    <button type="button" id="cancelEditProveedorBtn" class="auth-btn" style="background:#ef4444;">Cancelar</button>
                 </div>
             </form>
         </div>

@@ -151,7 +151,8 @@ body {
 
 #ventasSubmenu,
 #stockSubmenu,
-#cajaSubmenu {
+#cajaSubmenu,
+#listasSubmenu {
   display: none;
   flex-direction: column;
   gap: 6px;
@@ -241,6 +242,31 @@ body {
 
 #cajaSubmenu a:hover {
   background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%);
+  transform: translateX(4px);
+}
+
+#listasSubmenu a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  color: #1e293b;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%);
+  border: 2px solid #a855f7;
+}
+
+#listasSubmenu a::before {
+  content: "📋";
+  font-size: 1.2rem;
+}
+
+#listasSubmenu a:hover {
+  background: linear-gradient(135deg, #d8b4fe 0%, #c084fc 100%);
   transform: translateX(4px);
 }
 
